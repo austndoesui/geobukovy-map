@@ -40,18 +40,17 @@ const BASE_LAYERS: Record<BaseLayer, { url: string; attribution: string; subdoma
   },
 };
 
-export default function MapView({ base, showCadastre, showOrtho, onCoords }: MapViewProps) {
+export default function MapView({ base, showCadastre, cadastreOpacity = 0.85, showOrtho, orthoOpacity = 0.95, onCoords }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const baseLayerRef = useRef<L.TileLayer | null>(null);
   const cadastreRef = useRef<L.TileLayer.WMS | null>(null);
   const orthoRef = useRef<L.TileLayer.WMS | null>(null);
 
-  // Init map once
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = L.map(containerRef.current, {
-      center: [49.27, 19.3], // Orava region
+      center: [49.27, 19.3],
       zoom: 11,
       zoomControl: false,
       attributionControl: true,
@@ -59,7 +58,7 @@ export default function MapView({ base, showCadastre, showOrtho, onCoords }: Map
     mapRef.current = map;
 
     L.control.zoom({ position: "bottomright" }).addTo(map);
-    L.control.scale({ position: "bottomleft", imperial: false }).addTo(map);
+    L.control.scale({ position: "bottomleft", imperial: false, maxWidth: 160 }).addTo(map);
 
     map.on("mousemove", (e) => onCoords?.(e.latlng.lat, e.latlng.lng));
 
@@ -70,13 +69,10 @@ export default function MapView({ base, showCadastre, showOrtho, onCoords }: Map
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Base layer
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    if (baseLayerRef.current) {
-      map.removeLayer(baseLayerRef.current);
-    }
+    if (baseLayerRef.current) map.removeLayer(baseLayerRef.current);
     const cfg = BASE_LAYERS[base];
     const layer = L.tileLayer(cfg.url, {
       attribution: cfg.attribution,
@@ -88,7 +84,6 @@ export default function MapView({ base, showCadastre, showOrtho, onCoords }: Map
     baseLayerRef.current = layer;
   }, [base]);
 
-  // Cadastre WMS (Slovak kataster)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -101,7 +96,7 @@ export default function MapView({ base, showCadastre, showOrtho, onCoords }: Map
           transparent: true,
           version: "1.3.0",
           attribution: "© ÚGKK SR — Kataster nehnuteľností",
-          opacity: 0.85,
+          opacity: cadastreOpacity,
         }
       );
       wms.addTo(map);
@@ -109,10 +104,11 @@ export default function MapView({ base, showCadastre, showOrtho, onCoords }: Map
     } else if (!showCadastre && cadastreRef.current) {
       map.removeLayer(cadastreRef.current);
       cadastreRef.current = null;
+    } else if (showCadastre && cadastreRef.current) {
+      cadastreRef.current.setOpacity(cadastreOpacity);
     }
-  }, [showCadastre]);
+  }, [showCadastre, cadastreOpacity]);
 
-  // Ortophoto WMS
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -125,7 +121,7 @@ export default function MapView({ base, showCadastre, showOrtho, onCoords }: Map
           transparent: false,
           version: "1.3.0",
           attribution: "© ÚGKK SR — Ortofotomozaika",
-          opacity: 0.95,
+          opacity: orthoOpacity,
         }
       );
       wms.addTo(map);
@@ -133,8 +129,10 @@ export default function MapView({ base, showCadastre, showOrtho, onCoords }: Map
     } else if (!showOrtho && orthoRef.current) {
       map.removeLayer(orthoRef.current);
       orthoRef.current = null;
+    } else if (showOrtho && orthoRef.current) {
+      orthoRef.current.setOpacity(orthoOpacity);
     }
-  }, [showOrtho]);
+  }, [showOrtho, orthoOpacity]);
 
   return <div ref={containerRef} className="absolute inset-0" />;
 }
