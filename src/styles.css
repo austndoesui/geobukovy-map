@@ -17,7 +17,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
-  --color-primary-glow: var(--primary-glow);
+  --color-primary-deep: var(--primary-deep);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -27,50 +27,59 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-surface: var(--surface);
-  --color-surface-elevated: var(--surface-elevated);
-  --font-display: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --color-surface-2: var(--surface-2);
+  --color-rail: var(--rail);
+  --color-rail-foreground: var(--rail-foreground);
+  --color-gold: var(--gold);
+  --font-display: "Geist", "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --shadow-panel: 0 1px 2px oklch(0 0 0 / 0.04), 0 8px 24px oklch(0.2 0.05 155 / 0.08);
-  --shadow-float: 0 2px 4px oklch(0 0 0 / 0.06), 0 12px 32px oklch(0.2 0.05 155 / 0.14);
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
 :root {
-  --radius: 0.625rem;
+  --radius: 0.5rem;
 
-  /* Deep forest green palette */
-  --background: oklch(0.985 0.005 150);
-  --foreground: oklch(0.18 0.03 155);
+  /* GeoBukový brand: forest green + a touch of GEO2 gold */
+  --background: oklch(0.98 0.004 150);
+  --foreground: oklch(0.2 0.02 155);
 
   --surface: oklch(1 0 0);
-  --surface-elevated: oklch(0.99 0.004 150);
+  --surface-2: oklch(0.975 0.006 150);
 
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.03 155);
+  --card-foreground: oklch(0.2 0.02 155);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.03 155);
+  --popover-foreground: oklch(0.2 0.02 155);
 
-  --primary: oklch(0.45 0.12 155);
+  --primary: oklch(0.42 0.1 152);
   --primary-foreground: oklch(0.985 0.005 150);
-  --primary-glow: oklch(0.62 0.16 150);
+  --primary-deep: oklch(0.32 0.08 152);
 
-  --secondary: oklch(0.95 0.02 150);
-  --secondary-foreground: oklch(0.28 0.06 155);
+  --secondary: oklch(0.955 0.012 150);
+  --secondary-foreground: oklch(0.28 0.04 155);
 
-  --muted: oklch(0.96 0.01 150);
-  --muted-foreground: oklch(0.5 0.02 155);
+  --muted: oklch(0.965 0.008 150);
+  --muted-foreground: oklch(0.5 0.015 155);
 
-  --accent: oklch(0.92 0.05 150);
-  --accent-foreground: oklch(0.28 0.08 155);
+  --accent: oklch(0.93 0.04 150);
+  --accent-foreground: oklch(0.26 0.06 155);
 
   --destructive: oklch(0.58 0.21 27);
   --destructive-foreground: oklch(0.985 0.005 150);
 
-  --border: oklch(0.91 0.012 150);
-  --input: oklch(0.91 0.012 150);
-  --ring: oklch(0.55 0.14 150);
+  --border: oklch(0.92 0.008 150);
+  --border-strong: oklch(0.88 0.012 150);
+  --input: oklch(0.92 0.008 150);
+  --ring: oklch(0.5 0.1 150);
+
+  --rail: oklch(0.22 0.03 155);
+  --rail-foreground: oklch(0.95 0.01 150);
+
+  --gold: oklch(0.78 0.14 88);
 }
 
 @layer base {
@@ -80,27 +89,51 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
-    font-feature-settings: "cv11", "ss01";
     -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
   }
-  h1, h2, h3, h4 { font-family: var(--font-display); letter-spacing: -0.02em; }
+  h1, h2, h3, h4 { font-family: var(--font-display); letter-spacing: -0.015em; }
 }
 
-/* Leaflet container */
+/* Leaflet polish */
 .leaflet-container {
-  background: oklch(0.94 0.015 150);
+  background: oklch(0.93 0.012 200);
   font-family: var(--font-sans);
+  outline: none;
 }
-.leaflet-control-zoom a,
+.leaflet-bar {
+  border: none !important;
+  border-radius: 10px !important;
+  overflow: hidden;
+  box-shadow: 0 1px 2px oklch(0 0 0 / 0.06), 0 6px 20px oklch(0.2 0.04 155 / 0.12) !important;
+}
 .leaflet-bar a {
   background-color: var(--color-surface) !important;
   color: var(--color-foreground) !important;
   border-color: var(--color-border) !important;
+  width: 34px !important;
+  height: 34px !important;
+  line-height: 34px !important;
+  font-size: 18px !important;
+  font-weight: 400 !important;
 }
-.leaflet-control-zoom a:hover { background-color: var(--color-accent) !important; }
+.leaflet-bar a:hover { background-color: var(--color-accent) !important; color: var(--color-primary) !important; }
 .leaflet-control-attribution {
-  background: oklch(1 0 0 / 0.85) !important;
+  background: oklch(1 0 0 / 0.9) !important;
   color: var(--color-muted-foreground) !important;
-  backdrop-filter: blur(6px);
-  font-size: 10px !important;
+  backdrop-filter: blur(8px);
+  font-size: 10.5px !important;
+  padding: 2px 8px !important;
+  border-radius: 6px 0 0 0 !important;
+}
+.leaflet-control-attribution a { color: var(--color-primary) !important; }
+.leaflet-control-scale-line {
+  background: oklch(1 0 0 / 0.9) !important;
+  border-color: var(--color-foreground) !important;
+  color: var(--color-foreground) !important;
+  font-family: var(--font-mono);
+  font-size: 10.5px !important;
+  padding: 1px 6px !important;
+  border-radius: 4px;
+  backdrop-filter: blur(8px);
 }

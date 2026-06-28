@@ -6,7 +6,9 @@ type BaseLayer = "osm" | "satellite" | "topo";
 interface MapViewProps {
   base: BaseLayer;
   showCadastre: boolean;
+  cadastreOpacity?: number;
   showOrtho: boolean;
+  orthoOpacity?: number;
   onCoords?: (lat: number, lng: number) => void;
 }
 
