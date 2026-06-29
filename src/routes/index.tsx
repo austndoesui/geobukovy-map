@@ -22,16 +22,16 @@ import type { MapMarker } from "@/components/MapView";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "GeoBukový — Mapový portál (Slovensko & Česko)" },
+      { title: "GeoBukový — Mapový portál Slovensko" },
       {
         name: "description",
         content:
-          "Mapový portál pre Slovensko a Česko — kataster nehnuteľností, ortofotomapy, parcely a vyhľadávanie adries. GeoBukový — geodetická kancelária GEO2.",
+          "Mapový portál pre Slovensko — kataster nehnuteľností, ortofotomapy, parcely a vyhľadávanie adries. GeoBukový — geodetická kancelária GEO2.",
       },
       { property: "og:title", content: "GeoBukový — Mapový portál" },
       {
         property: "og:description",
-        content: "Mapový portál pre kataster a geodetické služby v SK a CZ.",
+        content: "Mapový portál pre kataster a geodetické služby na Slovensku.",
       },
     ],
   }),
@@ -85,7 +85,7 @@ function Portal() {
       url.searchParams.set("format", "json");
       url.searchParams.set("addressdetails", "1");
       url.searchParams.set("limit", "8");
-      url.searchParams.set("countrycodes", "sk,cz");
+      url.searchParams.set("countrycodes", "sk");
       url.searchParams.set("accept-language", "sk");
       const res = await fetch(url.toString(), {
         headers: { "Accept": "application/json" },
@@ -125,11 +125,11 @@ function Portal() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
-        // Only accept if inside SK/CZ-ish bounds
-        if (latitude >= 47.5 && latitude <= 51.3 && longitude >= 11.9 && longitude <= 22.7) {
+        // Only accept if inside SK bounds
+        if (latitude >= 47.4 && latitude <= 49.9 && longitude >= 16.4 && longitude <= 22.9) {
           setMarker({ lat: latitude, lng: longitude, label: "Vaša poloha", zoom: 15 });
         } else {
-          alert("Vaša poloha je mimo územia SK/CZ.");
+          alert("Vaša poloha je mimo územia Slovenska.");
         }
       },
       () => alert("Polohu sa nepodarilo získať."),
@@ -148,7 +148,7 @@ function Portal() {
           <div className="leading-tight">
             <div className="font-display text-[15px] font-semibold tracking-tight">GeoBukový</div>
             <div className="text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
-              Mapový portál · SK / CZ
+              Mapový portál · Slovensko
             </div>
           </div>
         </a>
@@ -169,7 +169,7 @@ function Portal() {
                 if (e.key === "Enter" && hits && hits.length > 0) pickHit(hits[0]);
                 if (e.key === "Escape") setShowHits(false);
               }}
-              placeholder="Hľadať adresu, obec, ulicu alebo miesto v SK / CZ…"
+              placeholder="Hľadať obec, adresu, ulicu alebo miesto na Slovensku…"
               className="h-10 w-full rounded-md border border-border bg-surface-2 pl-9 pr-20 text-[13.5px] placeholder:text-muted-foreground/80 focus:border-primary focus:bg-surface focus:outline-none focus:ring-2 focus:ring-ring/25"
             />
             {query && (
@@ -319,7 +319,7 @@ function Portal() {
             {panel === "search" && (
               <div className="p-4">
                 <label className="mb-1.5 block text-[11px] font-medium text-muted-foreground">
-                  Hľadať miesto (SK / CZ)
+                  Hľadať miesto na Slovensku
                 </label>
                 <input
                   value={query}
@@ -356,7 +356,7 @@ function Portal() {
                 )}
 
                 <p className="mt-3 text-[11.5px] leading-relaxed text-muted-foreground">
-                  Geokódovanie cez OpenStreetMap Nominatim, obmedzené na SK a CZ.
+                  Geokódovanie cez OpenStreetMap Nominatim, obmedzené na územie Slovenska.
                 </p>
               </div>
             )}
@@ -376,7 +376,7 @@ function Portal() {
               <div className="space-y-4 p-4 text-[12.5px] leading-relaxed text-muted-foreground">
                 <div>
                   <h3 className="mb-1 font-display text-[13px] font-semibold text-foreground">GeoBukový — GEO2</h3>
-                  <p>Geodetická kancelária pre Oravu, celé Slovensko a Českú republiku.</p>
+                  <p>Geodetická kancelária pre Oravu a celé Slovensko.</p>
                 </div>
                 <div className="rounded-md border border-border bg-surface-2 p-3">
                   <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Kontakt</div>
@@ -384,7 +384,7 @@ function Portal() {
                   <a href="mailto:info@geobukovy.sk" className="block text-[13px] text-foreground hover:underline">info@geobukovy.sk</a>
                 </div>
                 <p className="text-[11px]">
-                  Mapový portál využíva otvorené dátové služby ÚGKK SR a OpenStreetMap. Územie portálu je obmedzené na SK a CZ. Údaje sú informatívne.
+                  Mapový portál využíva otvorené dátové služby ÚGKK SR a OpenStreetMap. Územie portálu je obmedzené na Slovensko. Údaje sú informatívne.
                 </p>
               </div>
             )}
