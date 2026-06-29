@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
   Search,
   Layers,
@@ -14,16 +14,25 @@ import {
   HelpCircle,
   X,
   Locate,
+  Loader2,
 } from "lucide-react";
 import logo from "@/assets/geo2-logo.png.asset.json";
+import type { MapMarker } from "@/components/MapView";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "GeoBukový — Mapový portál" },
-      { name: "description", content: "Mapový portál pre kataster nehnuteľností, ortofotomapy a parcely. GeoBukový — geodetická kancelária GEO2, Orava a celé Slovensko." },
+      { title: "GeoBukový — Mapový portál (Slovensko & Česko)" },
+      {
+        name: "description",
+        content:
+          "Mapový portál pre Slovensko a Česko — kataster nehnuteľností, ortofotomapy, parcely a vyhľadávanie adries. GeoBukový — geodetická kancelária GEO2.",
+      },
       { property: "og:title", content: "GeoBukový — Mapový portál" },
-      { property: "og:description", content: "Mapový portál pre kataster a geodetické služby." },
+      {
+        property: "og:description",
+        content: "Mapový portál pre kataster a geodetické služby v SK a CZ.",
+      },
     ],
   }),
   component: Portal,
@@ -34,6 +43,16 @@ const MapView = lazy(() => import("@/components/MapView"));
 type BaseLayer = "osm" | "satellite" | "topo";
 type PanelKey = "layers" | "search" | "info" | "tools" | null;
 
+interface SearchHit {
+  place_id: number;
+  display_name: string;
+  lat: string;
+  lon: string;
+  type?: string;
+  class?: string;
+  address?: { country_code?: string };
+}
+
 function Portal() {
   const [mounted, setMounted] = useState(false);
   const [panel, setPanel] = useState<PanelKey>("layers");
@@ -43,9 +62,79 @@ function Portal() {
   const [showOrtho, setShowOrtho] = useState(false);
   const [orthoOpacity, setOrthoOpacity] = useState(95);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [marker, setMarker] = useState<MapMarker | null>(null);
+
+  // Search state
   const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<SearchHit[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [showHits, setShowHits] = useState(false);
+  const debounceRef = useRef<number | null>(null);
 
   useEffect(() => setMounted(true), []);
+
+  const runSearch = useCallback(async (q: string) => {
+    if (q.trim().length < 2) {
+      setHits(null);
+      return;
+    }
+    setSearching(true);
+    try {
+      const url = new URL("https://nominatim.openstreetmap.org/search");
+      url.searchParams.set("q", q);
+      url.searchParams.set("format", "json");
+      url.searchParams.set("addressdetails", "1");
+      url.searchParams.set("limit", "8");
+      url.searchParams.set("countrycodes", "sk,cz");
+      url.searchParams.set("accept-language", "sk");
+      const res = await fetch(url.toString(), {
+        headers: { "Accept": "application/json" },
+      });
+      const data: SearchHit[] = await res.json();
+      setHits(data);
+      setShowHits(true);
+    } catch {
+      setHits([]);
+    } finally {
+      setSearching(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    if (!query.trim()) {
+      setHits(null);
+      return;
+    }
+    debounceRef.current = window.setTimeout(() => runSearch(query), 350);
+    return () => {
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    };
+  }, [query, runSearch]);
+
+  const pickHit = (h: SearchHit) => {
+    const lat = parseFloat(h.lat);
+    const lng = parseFloat(h.lon);
+    setMarker({ lat, lng, label: h.display_name, zoom: 17 });
+    setShowHits(false);
+    setQuery(h.display_name.split(",").slice(0, 2).join(", "));
+  };
+
+  const locateMe = () => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        // Only accept if inside SK/CZ-ish bounds
+        if (latitude >= 47.5 && latitude <= 51.3 && longitude >= 11.9 && longitude <= 22.7) {
+          setMarker({ lat: latitude, lng: longitude, label: "Vaša poloha", zoom: 15 });
+        } else {
+          alert("Vaša poloha je mimo územia SK/CZ.");
+        }
+      },
+      () => alert("Polohu sa nepodarilo získať."),
+    );
+  };
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-background text-foreground">
@@ -59,31 +148,87 @@ function Portal() {
           <div className="leading-tight">
             <div className="font-display text-[15px] font-semibold tracking-tight">GeoBukový</div>
             <div className="text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
-              Mapový portál
+              Mapový portál · SK / CZ
             </div>
           </div>
         </a>
 
         {/* Search */}
         <div className="flex flex-1 items-center justify-center px-4">
-          <div className="relative w-full max-w-[520px]">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <div className="relative w-full max-w-[560px]">
+            {searching ? (
+              <Loader2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+            ) : (
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            )}
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Hľadať parcelu, adresu, katastrálne územie alebo obec…"
+              onFocus={() => hits && setShowHits(true)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && hits && hits.length > 0) pickHit(hits[0]);
+                if (e.key === "Escape") setShowHits(false);
+              }}
+              placeholder="Hľadať adresu, obec, ulicu alebo miesto v SK / CZ…"
               className="h-10 w-full rounded-md border border-border bg-surface-2 pl-9 pr-20 text-[13.5px] placeholder:text-muted-foreground/80 focus:border-primary focus:bg-surface focus:outline-none focus:ring-2 focus:ring-ring/25"
             />
-            <kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded border border-border bg-surface px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-              ⌘ K
-            </kbd>
+            {query && (
+              <button
+                onClick={() => {
+                  setQuery("");
+                  setHits(null);
+                  setShowHits(false);
+                }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="Vymazať"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+
+            {showHits && hits && (
+              <div className="absolute left-0 right-0 top-full z-[1001] mt-1.5 max-h-[60vh] overflow-y-auto rounded-md border border-border bg-surface shadow-lg">
+                {hits.length === 0 ? (
+                  <div className="px-3 py-4 text-center text-[12.5px] text-muted-foreground">
+                    Žiadne výsledky pre „{query}"
+                  </div>
+                ) : (
+                  hits.map((h) => (
+                    <button
+                      key={h.place_id}
+                      onClick={() => pickHit(h)}
+                      className="flex w-full items-start gap-2.5 border-b border-border px-3 py-2.5 text-left last:border-b-0 hover:bg-muted"
+                    >
+                      <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[13px] font-medium text-foreground">
+                          {h.display_name.split(",")[0]}
+                        </div>
+                        <div className="truncate text-[11.5px] text-muted-foreground">
+                          {h.display_name}
+                        </div>
+                      </div>
+                      <span className="rounded-sm border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[9.5px] uppercase text-muted-foreground">
+                        {h.address?.country_code ?? "—"}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
           </div>
         </div>
 
         <div className="hidden h-full items-center gap-1 border-l border-border px-3 md:flex">
-          <TopAction icon={<Printer className="h-4 w-4" />} label="Tlač" />
-          <TopAction icon={<Share2 className="h-4 w-4" />} label="Zdieľať" />
-          <TopAction icon={<HelpCircle className="h-4 w-4" />} label="Pomoc" />
+          <TopAction icon={<Printer className="h-4 w-4" />} label="Tlač" onClick={() => window.print()} />
+          <TopAction
+            icon={<Share2 className="h-4 w-4" />}
+            label="Zdieľať"
+            onClick={() => {
+              navigator.clipboard?.writeText(window.location.href);
+            }}
+          />
+          <TopAction icon={<HelpCircle className="h-4 w-4" />} label="Pomoc" onClick={() => setPanel("info")} />
         </div>
       </header>
 
@@ -96,7 +241,7 @@ function Portal() {
 
         <div className="mt-auto flex flex-col items-center gap-1">
           <RailDivider />
-          <RailButton icon={<Locate className="h-[18px] w-[18px]" />} label="Moja poloha" />
+          <RailButton icon={<Locate className="h-[18px] w-[18px]" />} label="Moja poloha" onClick={locateMe} />
         </div>
       </nav>
 
@@ -127,7 +272,7 @@ function Portal() {
               <div className="divide-y divide-border">
                 <Section title="Tematické vrstvy">
                   <LayerRow
-                    label="Kataster nehnuteľností"
+                    label="Kataster nehnuteľností (SK)"
                     sublabel="ÚGKK SR · WMS"
                     swatch="cadastre"
                     active={showCadastre}
@@ -136,7 +281,7 @@ function Portal() {
                     onOpacity={setCadastreOpacity}
                   />
                   <LayerRow
-                    label="Ortofotomozaika 2023"
+                    label="Ortofotomozaika 2023 (SK)"
                     sublabel="ÚGKK SR · WMS"
                     swatch="ortho"
                     active={showOrtho}
@@ -162,24 +307,56 @@ function Portal() {
                     <LegendItem color="oklch(0.55 0.02 155)" label="Stavba" />
                   </ul>
                 </Section>
+
+                <Section title="Územie">
+                  <p className="px-4 pb-4 pt-1 text-[11.5px] leading-relaxed text-muted-foreground">
+                    Mapový portál je obmedzený na územie Slovenskej republiky a Českej republiky.
+                  </p>
+                </Section>
               </div>
             )}
 
             {panel === "search" && (
               <div className="p-4">
                 <label className="mb-1.5 block text-[11px] font-medium text-muted-foreground">
-                  Číslo parcely
+                  Hľadať miesto (SK / CZ)
                 </label>
-                <input className="mb-3 h-9 w-full rounded-md border border-border bg-surface-2 px-3 text-[13px] focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring/25" placeholder="napr. 1234/5" />
-                <label className="mb-1.5 block text-[11px] font-medium text-muted-foreground">
-                  Katastrálne územie
-                </label>
-                <input className="mb-3 h-9 w-full rounded-md border border-border bg-surface-2 px-3 text-[13px] focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring/25" placeholder="napr. Námestovo" />
-                <button className="h-9 w-full rounded-md bg-primary text-[13px] font-medium text-primary-foreground hover:bg-primary-deep">
-                  Vyhľadať
-                </button>
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className="mb-3 h-9 w-full rounded-md border border-border bg-surface-2 px-3 text-[13px] focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring/25"
+                  placeholder="napr. Námestovo, Praha 1, Hlavná 25…"
+                />
+
+                {hits && (
+                  <div className="rounded-md border border-border bg-surface-2">
+                    {hits.length === 0 && (
+                      <div className="p-3 text-center text-[12px] text-muted-foreground">
+                        Žiadne výsledky
+                      </div>
+                    )}
+                    {hits.map((h) => (
+                      <button
+                        key={h.place_id}
+                        onClick={() => pickHit(h)}
+                        className="flex w-full items-start gap-2 border-b border-border px-3 py-2 text-left last:border-b-0 hover:bg-muted"
+                      >
+                        <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                        <div className="min-w-0">
+                          <div className="truncate text-[12.5px] font-medium text-foreground">
+                            {h.display_name.split(",")[0]}
+                          </div>
+                          <div className="truncate text-[11px] text-muted-foreground">
+                            {h.display_name}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <p className="mt-3 text-[11.5px] leading-relaxed text-muted-foreground">
-                  Dáta z verejne dostupných služieb ÚGKK SR. Pre úradné výpisy z katastra kontaktujte našu kanceláriu.
+                  Geokódovanie cez OpenStreetMap Nominatim, obmedzené na SK a CZ.
                 </p>
               </div>
             )}
@@ -199,7 +376,7 @@ function Portal() {
               <div className="space-y-4 p-4 text-[12.5px] leading-relaxed text-muted-foreground">
                 <div>
                   <h3 className="mb-1 font-display text-[13px] font-semibold text-foreground">GeoBukový — GEO2</h3>
-                  <p>Ing. Tomáš Bukový, PhD. Geodetická kancelária pre Oravu a celé Slovensko.</p>
+                  <p>Geodetická kancelária pre Oravu, celé Slovensko a Českú republiku.</p>
                 </div>
                 <div className="rounded-md border border-border bg-surface-2 p-3">
                   <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Kontakt</div>
@@ -207,7 +384,7 @@ function Portal() {
                   <a href="mailto:info@geobukovy.sk" className="block text-[13px] text-foreground hover:underline">info@geobukovy.sk</a>
                 </div>
                 <p className="text-[11px]">
-                  Mapový portál využíva otvorené dátové služby ÚGKK SR. Údaje sú informatívne.
+                  Mapový portál využíva otvorené dátové služby ÚGKK SR a OpenStreetMap. Územie portálu je obmedzené na SK a CZ. Údaje sú informatívne.
                 </p>
               </div>
             )}
@@ -219,7 +396,15 @@ function Portal() {
       <main className="absolute inset-0 top-14 left-14">
         {mounted ? (
           <Suspense fallback={<MapSkeleton />}>
-            <MapView base={base} showCadastre={showCadastre} cadastreOpacity={cadastreOpacity / 100} showOrtho={showOrtho} orthoOpacity={orthoOpacity / 100} onCoords={(lat, lng) => setCoords({ lat, lng })} />
+            <MapView
+              base={base}
+              showCadastre={showCadastre}
+              cadastreOpacity={cadastreOpacity / 100}
+              showOrtho={showOrtho}
+              orthoOpacity={orthoOpacity / 100}
+              marker={marker}
+              onCoords={(lat, lng) => setCoords({ lat, lng })}
+            />
           </Suspense>
         ) : (
           <MapSkeleton />
@@ -238,9 +423,12 @@ function Portal() {
 
 /* ---------------- subcomponents ---------------- */
 
-function TopAction({ icon, label }: { icon: React.ReactNode; label: string }) {
+function TopAction({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick?: () => void }) {
   return (
-    <button className="flex h-9 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
+    <button
+      onClick={onClick}
+      className="flex h-9 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+    >
       {icon}
       <span className="hidden lg:inline">{label}</span>
     </button>
