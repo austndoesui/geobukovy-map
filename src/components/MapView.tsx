@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
+import slovakiaGeo from "@/data/slovakia.geo.json";
 
 type BaseLayer = "osm" | "satellite" | "topo";
 
@@ -31,11 +32,8 @@ const DEFAULT_ICON = L.icon({
 });
 L.Marker.prototype.options.icon = DEFAULT_ICON;
 
-// Bounding box covering Slovakia + Czech Republic (with a small margin)
-const SK_CZ_BOUNDS = L.latLngBounds(
-  L.latLng(47.55, 11.9), // SW
-  L.latLng(51.25, 22.7), // NE
-);
+// Slovakia bounding box (with small margin so users can pan a bit around the border)
+const SK_BOUNDS = L.latLngBounds(L.latLng(47.4, 16.4), L.latLng(49.9, 22.9));
 
 const BASE_LAYERS: Record<BaseLayer, { url: string; attribution: string; subdomains?: string; maxZoom?: number }> = {
   osm: {
@@ -56,6 +54,16 @@ const BASE_LAYERS: Record<BaseLayer, { url: string; attribution: string; subdoma
   },
 };
 
+// Build a "blind-map" mask: a giant world polygon with Slovakia cut out as a hole.
+function getSlovakiaRing(): [number, number][] {
+  // GeoJSON Polygon coords: [ [ [lon, lat], ... ] ]
+  // Leaflet wants [lat, lon]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fc = slovakiaGeo as any;
+  const coords: [number, number][] = fc.features[0].geometry.coordinates[0];
+  return coords.map(([lon, lat]) => [lat, lon] as [number, number]);
+}
+
 export default function MapView({
   base,
   showCadastre,
@@ -71,27 +79,28 @@ export default function MapView({
   const cadastreRef = useRef<L.TileLayer.WMS | null>(null);
   const orthoRef = useRef<L.TileLayer.WMS | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
+  const maskRef = useRef<L.Polygon | null>(null);
+  const borderRef = useRef<L.Polyline | null>(null);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = L.map(containerRef.current, {
-      center: [49.27, 19.3],
+      center: [48.7, 19.5],
       zoom: 8,
       minZoom: 7,
       maxZoom: 19,
       zoomControl: false,
       attributionControl: true,
-      maxBounds: SK_CZ_BOUNDS,
+      maxBounds: SK_BOUNDS,
       maxBoundsViscosity: 1.0,
       worldCopyJump: false,
     });
-    map.setMaxBounds(SK_CZ_BOUNDS);
     mapRef.current = map;
 
     L.control.zoom({ position: "bottomright" }).addTo(map);
     L.control.scale({ position: "bottomleft", imperial: false, maxWidth: 160 }).addTo(map);
 
-    map.fitBounds(SK_CZ_BOUNDS, { padding: [10, 10] });
+    map.fitBounds(SK_BOUNDS, { padding: [10, 10] });
 
     map.on("mousemove", (e) => onCoords?.(e.latlng.lat, e.latlng.lng));
 
@@ -102,6 +111,7 @@ export default function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Base tile layer
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -111,13 +121,55 @@ export default function MapView({
       attribution: cfg.attribution,
       subdomains: cfg.subdomains ?? "abc",
       maxZoom: cfg.maxZoom ?? 19,
-      bounds: SK_CZ_BOUNDS,
       noWrap: true,
     });
     layer.addTo(map);
     layer.bringToBack();
     baseLayerRef.current = layer;
   }, [base]);
+
+  // Blind-map mask + Slovakia outline
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (maskRef.current) {
+      map.removeLayer(maskRef.current);
+      maskRef.current = null;
+    }
+    if (borderRef.current) {
+      map.removeLayer(borderRef.current);
+      borderRef.current = null;
+    }
+
+    const skRing = getSlovakiaRing();
+    // Outer ring covers the whole world (Leaflet [lat, lng])
+    const worldRing: [number, number][] = [
+      [-85, -180],
+      [-85, 180],
+      [85, 180],
+      [85, -180],
+    ];
+
+    const mask = L.polygon([worldRing, skRing], {
+      stroke: false,
+      fillColor: "#8a9499",
+      fillOpacity: 0.78,
+      interactive: false,
+      // @ts-expect-error leaflet typing — pane is valid
+      pane: "overlayPane",
+    });
+    mask.addTo(map);
+    maskRef.current = mask;
+
+    const border = L.polyline(skRing, {
+      color: "#15803d",
+      weight: 2,
+      opacity: 0.9,
+      interactive: false,
+    });
+    border.addTo(map);
+    borderRef.current = border;
+  }, []);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -136,6 +188,9 @@ export default function MapView({
       );
       wms.addTo(map);
       cadastreRef.current = wms;
+      // Make sure mask stays under the cadastre overlay
+      if (maskRef.current) maskRef.current.bringToBack();
+      if (baseLayerRef.current) baseLayerRef.current.bringToBack();
     } else if (!showCadastre && cadastreRef.current) {
       map.removeLayer(cadastreRef.current);
       cadastreRef.current = null;
@@ -161,6 +216,8 @@ export default function MapView({
       );
       wms.addTo(map);
       orthoRef.current = wms;
+      if (maskRef.current) maskRef.current.bringToBack();
+      if (baseLayerRef.current) baseLayerRef.current.bringToBack();
     } else if (!showOrtho && orthoRef.current) {
       map.removeLayer(orthoRef.current);
       orthoRef.current = null;
@@ -168,6 +225,13 @@ export default function MapView({
       orthoRef.current.setOpacity(orthoOpacity);
     }
   }, [showOrtho, orthoOpacity]);
+
+  // Keep mask + border on top of base tiles but below markers
+  useEffect(() => {
+    if (maskRef.current) maskRef.current.bringToFront();
+    if (borderRef.current) borderRef.current.bringToFront();
+    if (markerRef.current) markerRef.current.setZIndexOffset(1000);
+  }, [base, showCadastre, showOrtho]);
 
   // Search marker
   useEffect(() => {
@@ -178,7 +242,7 @@ export default function MapView({
       markerRef.current = null;
     }
     if (marker) {
-      const m = L.marker([marker.lat, marker.lng]).addTo(map);
+      const m = L.marker([marker.lat, marker.lng], { zIndexOffset: 1000 }).addTo(map);
       if (marker.label) m.bindPopup(marker.label).openPopup();
       markerRef.current = m;
       map.flyTo([marker.lat, marker.lng], marker.zoom ?? 16, { duration: 0.8 });
