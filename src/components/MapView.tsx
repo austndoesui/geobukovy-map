@@ -155,8 +155,6 @@ export default function MapView({
       fillColor: "#8a9499",
       fillOpacity: 0.78,
       interactive: false,
-      // @ts-expect-error leaflet typing — pane is valid
-      pane: "overlayPane",
     });
     mask.addTo(map);
     maskRef.current = mask;
