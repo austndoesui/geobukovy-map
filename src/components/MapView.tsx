@@ -152,17 +152,19 @@ export default function MapView({
 
     const mask = L.polygon([worldRing, skRing], {
       stroke: false,
-      fillColor: "#8a9499",
-      fillOpacity: 0.78,
+      fillColor: "#9aa4ab",
+      fillOpacity: 1,
       interactive: false,
+      // @ts-expect-error leaflet typings miss fillRule
+      fillRule: "evenodd",
     });
     mask.addTo(map);
     maskRef.current = mask;
 
     const border = L.polyline(skRing, {
       color: "#15803d",
-      weight: 2,
-      opacity: 0.9,
+      weight: 2.5,
+      opacity: 1,
       interactive: false,
     });
     border.addTo(map);
