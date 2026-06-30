@@ -62,10 +62,13 @@ export function deleteUser(username: string): { ok: boolean; error?: string } {
   return { ok: true };
 }
 
+function norm(s: string) {
+  return s.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
 export function login(username: string, password: string): { ok: boolean; error?: string } {
-  const user = readUsers().find(
-    (u) => u.username.toLowerCase() === username.trim().toLowerCase() && u.password === password,
-  );
+  const want = norm(username);
+  const user = readUsers().find((u) => norm(u.username) === want && u.password === password);
   if (!user) return { ok: false, error: "Nesprávne meno alebo heslo." };
   if (typeof window !== "undefined") {
     window.localStorage.setItem(
