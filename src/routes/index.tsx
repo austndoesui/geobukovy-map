@@ -343,7 +343,7 @@ function Portal() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   className="mb-3 h-9 w-full rounded-md border border-border bg-surface-2 px-3 text-[13px] focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring/25"
-                  placeholder="napr. Námestovo, Praha 1, Hlavná 25…"
+                  placeholder="napr. Námestovo, Bratislava, Hlavná 25…"
                 />
 
                 {hits && (
