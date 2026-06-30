@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
   Search,
@@ -15,9 +15,12 @@ import {
   X,
   Locate,
   Loader2,
+  Shield,
+  LogIn,
 } from "lucide-react";
 import logo from "@/assets/geo2-logo.png.asset.json";
 import type { MapMarker } from "@/components/MapView";
+import { getSession, type Session } from "@/lib/auth";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -71,7 +74,12 @@ function Portal() {
   const [showHits, setShowHits] = useState(false);
   const debounceRef = useRef<number | null>(null);
 
-  useEffect(() => setMounted(true), []);
+  const [session, setSession] = useState<Session | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+    setSession(getSession());
+  }, []);
 
   const runSearch = useCallback(async (q: string) => {
     if (q.trim().length < 2) {
@@ -230,6 +238,16 @@ function Portal() {
           />
           <TopAction icon={<HelpCircle className="h-4 w-4" />} label="Pomoc" onClick={() => setPanel("info")} />
         </div>
+
+        <div className="flex h-full items-center border-l border-border px-2">
+          <Link
+            to={session ? "/admin" : "/login"}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-[12.5px] font-medium text-primary-foreground hover:opacity-90"
+          >
+            {session ? <Shield className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
+            <span className="hidden sm:inline">{session ? "Admin" : "Prihlásenie"}</span>
+          </Link>
+        </div>
       </header>
 
       {/* Left rail */}
@@ -310,7 +328,7 @@ function Portal() {
 
                 <Section title="Územie">
                   <p className="px-4 pb-4 pt-1 text-[11.5px] leading-relaxed text-muted-foreground">
-                    Mapový portál je obmedzený na územie Slovenskej republiky a Českej republiky.
+                    Mapový portál je obmedzený výhradne na územie Slovenskej republiky.
                   </p>
                 </Section>
               </div>
