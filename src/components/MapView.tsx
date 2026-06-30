@@ -155,9 +155,10 @@ export default function MapView({
       fillColor: "#9aa4ab",
       fillOpacity: 1,
       interactive: false,
-      // @ts-expect-error leaflet typings miss fillRule
-      fillRule: "evenodd",
-    });
+    } as L.PolylineOptions & { fillRule?: string });
+    // ensure even-odd fill so the SK ring punches a clean hole
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mask.options as any).fillRule = "evenodd";
     mask.addTo(map);
     maskRef.current = mask;
 
