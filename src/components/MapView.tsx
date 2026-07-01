@@ -103,6 +103,7 @@ export default function MapView({
     map.fitBounds(SK_BOUNDS, { padding: [10, 10] });
 
     map.on("mousemove", (e) => onCoords?.(e.latlng.lat, e.latlng.lng));
+    map.on("click", (e) => identifyParcel(map, e.latlng));
 
     return () => {
       map.remove();
