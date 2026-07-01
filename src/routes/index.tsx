@@ -46,15 +46,27 @@ const MapView = lazy(() => import("@/components/MapView"));
 type BaseLayer = "osm" | "satellite" | "topo";
 type PanelKey = "layers" | "search" | "info" | "tools" | null;
 
-interface SearchHit {
-  place_id: number;
-  display_name: string;
-  lat: string;
-  lon: string;
-  type?: string;
-  class?: string;
-  address?: { country_code?: string };
+interface PlaceHit {
+  kind: "place";
+  id: string;
+  lat: number;
+  lng: number;
+  title: string;
+  subtitle: string;
 }
+interface ParcelHit {
+  kind: "parcel";
+  id: string;
+  lat: number;
+  lng: number;
+  title: string;
+  subtitle: string;
+  layerName: string;
+}
+type Hit = PlaceHit | ParcelHit;
+
+// Detects "1155/14", "1155-14", "1155" — a token that looks like a parcel number
+const PARCEL_TOKEN = /\b\d{1,6}(?:\s*[/-]\s*\d{1,4})?\b/;
 
 function Portal() {
   const [mounted, setMounted] = useState(false);
@@ -69,10 +81,11 @@ function Portal() {
 
   // Search state
   const [query, setQuery] = useState("");
-  const [hits, setHits] = useState<SearchHit[] | null>(null);
+  const [hits, setHits] = useState<Hit[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [showHits, setShowHits] = useState(false);
   const debounceRef = useRef<number | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const [session, setSession] = useState<Session | null>(null);
 
@@ -86,25 +99,71 @@ function Portal() {
       setHits(null);
       return;
     }
+    if (abortRef.current) abortRef.current.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     setSearching(true);
+
+    const looksLikeParcel = PARCEL_TOKEN.test(q);
+
+    const placesPromise = (async () => {
+      try {
+        const url = new URL("https://nominatim.openstreetmap.org/search");
+        url.searchParams.set("q", q);
+        url.searchParams.set("format", "json");
+        url.searchParams.set("addressdetails", "1");
+        url.searchParams.set("limit", "6");
+        url.searchParams.set("countrycodes", "sk");
+        url.searchParams.set("accept-language", "sk");
+        const res = await fetch(url.toString(), { signal: ctrl.signal });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const data: any[] = await res.json();
+        return data.map<PlaceHit>((h) => ({
+          kind: "place",
+          id: `p-${h.place_id}`,
+          lat: parseFloat(h.lat),
+          lng: parseFloat(h.lon),
+          title: h.display_name.split(",")[0],
+          subtitle: h.display_name,
+        }));
+      } catch {
+        return [] as PlaceHit[];
+      }
+    })();
+
+    const parcelPromise = looksLikeParcel
+      ? (async () => {
+          try {
+            const res = await fetch(
+              `/api/public/kataster/search?q=${encodeURIComponent(q)}`,
+              { signal: ctrl.signal },
+            );
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const data: any = await res.json();
+            const arr = Array.isArray(data?.results) ? data.results : [];
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            return arr.map<ParcelHit>((r: any, i: number) => ({
+              kind: "parcel",
+              id: `k-${i}-${r.layer}`,
+              lat: r.lat,
+              lng: r.lng,
+              title: r.label,
+              subtitle: r.sublabel || r.layerName,
+              layerName: r.layerName,
+            }));
+          } catch {
+            return [] as ParcelHit[];
+          }
+        })()
+      : Promise.resolve<ParcelHit[]>([]);
+
     try {
-      const url = new URL("https://nominatim.openstreetmap.org/search");
-      url.searchParams.set("q", q);
-      url.searchParams.set("format", "json");
-      url.searchParams.set("addressdetails", "1");
-      url.searchParams.set("limit", "8");
-      url.searchParams.set("countrycodes", "sk");
-      url.searchParams.set("accept-language", "sk");
-      const res = await fetch(url.toString(), {
-        headers: { "Accept": "application/json" },
-      });
-      const data: SearchHit[] = await res.json();
-      setHits(data);
+      const [places, parcels] = await Promise.all([placesPromise, parcelPromise]);
+      if (ctrl.signal.aborted) return;
+      setHits([...parcels, ...places]);
       setShowHits(true);
-    } catch {
-      setHits([]);
     } finally {
-      setSearching(false);
+      if (!ctrl.signal.aborted) setSearching(false);
     }
   }, []);
 
@@ -114,19 +173,18 @@ function Portal() {
       setHits(null);
       return;
     }
-    debounceRef.current = window.setTimeout(() => runSearch(query), 350);
+    debounceRef.current = window.setTimeout(() => runSearch(query), 250);
     return () => {
       if (debounceRef.current) window.clearTimeout(debounceRef.current);
     };
   }, [query, runSearch]);
 
-  const pickHit = (h: SearchHit) => {
-    const lat = parseFloat(h.lat);
-    const lng = parseFloat(h.lon);
-    setMarker({ lat, lng, label: h.display_name, zoom: 17 });
+  const pickHit = (h: Hit) => {
+    setMarker({ lat: h.lat, lng: h.lng, label: h.title, zoom: h.kind === "parcel" ? 18 : 17 });
     setShowHits(false);
-    setQuery(h.display_name.split(",").slice(0, 2).join(", "));
+    setQuery(h.title);
   };
+
 
   const locateMe = () => {
     if (!navigator.geolocation) return;
