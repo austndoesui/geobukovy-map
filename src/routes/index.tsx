@@ -261,21 +261,21 @@ function Portal() {
                 ) : (
                   hits.map((h) => (
                     <button
-                      key={h.place_id}
+                      key={h.id}
                       onClick={() => pickHit(h)}
                       className="flex w-full items-start gap-2.5 border-b border-border px-3 py-2.5 text-left last:border-b-0 hover:bg-muted"
                     >
-                      <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                      <MapPin className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${h.kind === "parcel" ? "text-red-600" : "text-primary"}`} />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[13px] font-medium text-foreground">
-                          {h.display_name.split(",")[0]}
+                          {h.title}
                         </div>
                         <div className="truncate text-[11.5px] text-muted-foreground">
-                          {h.display_name}
+                          {h.subtitle}
                         </div>
                       </div>
                       <span className="rounded-sm border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[9.5px] uppercase text-muted-foreground">
-                        {h.address?.country_code ?? "—"}
+                        {h.kind === "parcel" ? "KN" : "SK"}
                       </span>
                     </button>
                   ))
