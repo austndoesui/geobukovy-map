@@ -84,7 +84,7 @@ async function identifyParcel(map: L.Map, latlng: L.LatLng) {
     const sw = L.CRS.EPSG3857.project(b.getSouthWest());
     const ne = L.CRS.EPSG3857.project(b.getNorthEast());
     const url =
-      "https://kataster.skgeodesy.sk/eskn/rest/services/NR/kn_wms_norm/MapServer/identify" +
+      "/api/public/kataster/identify" +
       `?f=json&geometry=${latlng.lng},${latlng.lat}` +
       "&geometryType=esriGeometryPoint&sr=4326&tolerance=6" +
       `&mapExtent=${sw.x},${sw.y},${ne.x},${ne.y}` +
