@@ -142,7 +142,7 @@ function Portal() {
             const data: any = await res.json();
             const arr = Array.isArray(data?.results) ? data.results : [];
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return arr.map<ParcelHit>((r: any, i: number) => ({
+            return (arr as any[]).map((r, i): ParcelHit => ({
               kind: "parcel",
               id: `k-${i}-${r.layer}`,
               lat: r.lat,
