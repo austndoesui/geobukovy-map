@@ -326,6 +326,13 @@ function Portal() {
                   </ul>
                 </Section>
 
+                <Section title="Práca s parcelami">
+                  <p className="px-4 pb-4 pt-1 text-[11.5px] leading-relaxed text-muted-foreground">
+                    Kliknutím do mapy zobrazíš detail parcely (číslo, k.ú., LV, výmera, druh pozemku).
+                    Zoznam vlastníkov a všetkých parciel na LV otvorí tlačidlo <span className="text-foreground font-medium">„Zobraziť vlastníkov (LV) v ZBGIS"</span> — údaje o vlastníkoch poskytuje výhradne portál ÚGKK SR (ZBGIS).
+                  </p>
+                </Section>
+
                 <Section title="Územie">
                   <p className="px-4 pb-4 pt-1 text-[11.5px] leading-relaxed text-muted-foreground">
                     Mapový portál je obmedzený výhradne na územie Slovenskej republiky.
