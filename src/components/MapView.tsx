@@ -1,14 +1,33 @@
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import L from "leaflet";
 import slovakiaGeo from "@/data/slovakia.geo.json";
 
 type BaseLayer = "osm" | "satellite" | "topo";
+
+export interface MapViewHandle {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  clearParcel: () => void;
+}
 
 export interface MapMarker {
   lat: number;
   lng: number;
   label?: string;
   zoom?: number;
+}
+
+export interface ParcelInfo {
+  parcelNo: string;
+  ku: string;
+  lv: string | null;
+  vymera: string | null;
+  druh: string | null;
+  layer: string;
+  lat: number;
+  lng: number;
+  zbgisUrl: string;
+  rawAttributes: Record<string, unknown>;
 }
 
 interface MapViewProps {
@@ -19,6 +38,7 @@ interface MapViewProps {
   orthoOpacity?: number;
   marker?: MapMarker | null;
   onCoords?: (lat: number, lng: number) => void;
+  onParcelSelect?: (info: ParcelInfo) => void;
 }
 
 const DEFAULT_ICON = L.icon({
@@ -66,62 +86,41 @@ function getSlovakiaRing(): [number, number][] {
 
 // Highlight layer for a clicked parcel
 let parcelHighlight: L.GeoJSON | null = null;
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function esriRingsToGeoJSON(geom: any): any {
-  if (!geom || !geom.rings) return null;
-  return {
-    type: "Feature",
-    geometry: { type: "Polygon", coordinates: geom.rings },
-    properties: {},
-  };
-}
+let parcelMarker: L.Marker | null = null;
+let parcelSelectCallback: ((info: ParcelInfo) => void) | null = null;
 
 async function identifyParcel(map: L.Map, latlng: L.LatLng) {
   try {
     const size = map.getSize();
+    const point = map.latLngToContainerPoint(latlng);
     const b = map.getBounds();
-    const sw = L.CRS.EPSG3857.project(b.getSouthWest());
-    const ne = L.CRS.EPSG3857.project(b.getNorthEast());
     const url =
       "/api/public/kataster/identify" +
-      `?f=json&geometry=${latlng.lng},${latlng.lat}` +
-      "&geometryType=esriGeometryPoint&sr=4326&tolerance=6" +
-      `&mapExtent=${sw.x},${sw.y},${ne.x},${ne.y}` +
-      `&imageDisplay=${size.x},${size.y},96` +
-      "&layers=all&returnGeometry=true";
-    // Loading indicator popup
-    const loading = L.popup({ closeButton: false, autoClose: true })
-      .setLatLng(latlng)
-      .setContent('<div style="font:12px system-ui;padding:2px 4px">Načítavam parcelu…</div>')
-      .openOn(map);
+      "?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo" +
+      "&LAYERS=5,8&QUERY_LAYERS=5,8" +
+      `&I=${Math.round(point.x)}&J=${Math.round(point.y)}` +
+      `&WIDTH=${Math.round(size.x)}&HEIGHT=${Math.round(size.y)}` +
+      `&BBOX=${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}` +
+      "&CRS=EPSG:4326&INFO_FORMAT=application/geo%2Bjson&FEATURE_COUNT=3";
+
     const res = await fetch(url);
     const data = await res.json();
-    map.closePopup(loading);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const results: any[] = data?.results || [];
-    // Prefer parcel-type layers
-    const parcel =
-      results.find((r) => /parcel/i.test(r.layerName || "")) || results[0];
-    if (!parcel) {
-      L.popup()
-        .setLatLng(latlng)
-        .setContent(
-          '<div style="font:12px system-ui;max-width:220px">Na tomto mieste nebola nájdená žiadna parcela katastra. Skús priblížiť mapu a klikni znova.</div>',
-        )
-        .openOn(map);
-      return;
-    }
+    const features: any[] = data?.features || [];
+    const feature = features.find((f) => /parcel/i.test(f.properties?.LAYER_NAME || "")) || features[0];
+    if (!feature) return;
 
-    // Draw highlight
     if (parcelHighlight) {
       map.removeLayer(parcelHighlight);
       parcelHighlight = null;
     }
-    const gj = esriRingsToGeoJSON(parcel.geometry);
-    if (gj) {
-      parcelHighlight = L.geoJSON(gj, {
+    if (parcelMarker) {
+      map.removeLayer(parcelMarker);
+      parcelMarker = null;
+    }
+    if (feature.geometry) {
+      parcelHighlight = L.geoJSON(feature, {
         style: {
           color: "#dc2626",
           weight: 2.5,
@@ -131,56 +130,47 @@ async function identifyParcel(map: L.Map, latlng: L.LatLng) {
         interactive: false,
       }).addTo(map);
     }
+    parcelMarker = L.marker([latlng.lat, latlng.lng], { zIndexOffset: 1100 }).addTo(map);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const a: Record<string, any> = parcel.attributes || {};
+    const props: Record<string, any> = feature.properties || {};
     const pick = (...keys: string[]) => {
       for (const k of keys) {
-        for (const key of Object.keys(a)) {
-          if (key.toLowerCase().includes(k.toLowerCase()) && a[key] != null && String(a[key]).trim() !== "") {
-            return String(a[key]);
+        for (const key of Object.keys(props)) {
+          if (key.toLowerCase().includes(k.toLowerCase()) && props[key] != null && String(props[key]).trim() !== "") {
+            return String(props[key]);
           }
         }
       }
       return null;
     };
-    const parcelNo = pick("cislo_parcely", "parcelné", "parcelne", "cislo") || "—";
-    const ku = pick("nazov_ku", "katastrálne", "katastralne", "ku_") || "—";
-    const lv = pick("cislo_lv", "list vlast", "lv");
+    const parcelNo = pick("číslo parcely", "parcelné číslo", "cislo_parcely", "parcelné", "parcelne") || "—";
+    const ku = pick("názov katastrálneho", "názov_ku", "nazov_ku") || "—";
+    const lv = pick("list vlastníctva", "listu vlastníctva", "číslo listu", "cislo_lv", "list vlast");
     const vymera = pick("vymera", "výmera");
-    const druh = pick("druh_pozemku", "druh");
-    const layer = parcel.layerName || "Parcela";
-
+    const druh = pick("druh pozemku", "druh_pozemku", "druh");
+    const layer = feature.properties?.LAYER_NAME || feature.properties?.layerName || "Parcela";
     const zbgisUrl = `https://zbgis.skgeodesy.sk/mkzbgis/sk/kataster?pos=${latlng.lat.toFixed(6)},${latlng.lng.toFixed(6)},19&bm=zbgis&sc_p=kn`;
 
-    const row = (label: string, val: string | null) =>
-      val
-        ? `<div style="display:flex;justify-content:space-between;gap:12px;padding:3px 0;border-top:1px solid #e5e7eb"><span style="color:#6b7280">${label}</span><span style="font-weight:500;color:#111827">${val}</span></div>`
-        : "";
-
-    const html = `
-      <div style="font:12.5px system-ui;min-width:240px;max-width:280px">
-        <div style="font-weight:600;font-size:13px;color:#111827;margin-bottom:2px">Parcela ${parcelNo}</div>
-        <div style="font-size:11px;color:#6b7280;margin-bottom:6px">${layer}</div>
-        ${row("Katastrálne územie", ku)}
-        ${row("List vlastníctva", lv)}
-        ${row("Výmera (m²)", vymera)}
-        ${row("Druh pozemku", druh)}
-        <a href="${zbgisUrl}" target="_blank" rel="noopener"
-           style="display:block;margin-top:8px;padding:6px 8px;background:#15803d;color:#fff;text-align:center;text-decoration:none;border-radius:4px;font-weight:500">
-          Zobraziť vlastníkov (LV) v ZBGIS
-        </a>
-      </div>`;
-
-    L.popup({ maxWidth: 320 }).setLatLng(latlng).setContent(html).openOn(map);
+    parcelSelectCallback?.({
+      parcelNo: parcelNo ?? "—",
+      ku: ku ?? "—",
+      lv,
+      vymera,
+      druh,
+      layer: layer ?? "—",
+      lat: latlng.lat,
+      lng: latlng.lng,
+      zbgisUrl,
+      rawAttributes: props,
+    });
   } catch (err) {
     console.error("identify failed", err);
   }
 }
 
 
-
-export default function MapView({
+const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
   base,
   showCadastre,
   cadastreOpacity = 0.85,
@@ -188,7 +178,8 @@ export default function MapView({
   orthoOpacity = 0.95,
   marker,
   onCoords,
-}: MapViewProps) {
+  onParcelSelect,
+}, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const baseLayerRef = useRef<L.TileLayer | null>(null);
@@ -213,20 +204,36 @@ export default function MapView({
     });
     mapRef.current = map;
 
-    L.control.zoom({ position: "bottomright" }).addTo(map);
     L.control.scale({ position: "bottomleft", imperial: false, maxWidth: 160 }).addTo(map);
 
-    map.fitBounds(SK_BOUNDS, { padding: [10, 10] });
+    map.whenReady(() => map.fitBounds(SK_BOUNDS, { padding: [10, 10] }));
 
     map.on("mousemove", (e) => onCoords?.(e.latlng.lat, e.latlng.lng));
     map.on("click", (e) => identifyParcel(map, e.latlng));
 
     return () => {
+      parcelSelectCallback = null;
       map.remove();
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Keep the module-level callback in sync with the prop across re-renders
+  useEffect(() => {
+    parcelSelectCallback = onParcelSelect ?? null;
+  }, [onParcelSelect]);
+
+  useImperativeHandle(ref, () => ({
+    zoomIn: () => mapRef.current?.zoomIn(),
+    zoomOut: () => mapRef.current?.zoomOut(),
+    clearParcel: () => {
+      const map = mapRef.current;
+      if (!map) return;
+      if (parcelHighlight) { map.removeLayer(parcelHighlight); parcelHighlight = null; }
+      if (parcelMarker) { map.removeLayer(parcelMarker); parcelMarker = null; }
+    },
+  }), []);
 
   // Base tile layer
   useEffect(() => {
@@ -368,4 +375,6 @@ export default function MapView({
   }, [marker]);
 
   return <div ref={containerRef} className="absolute inset-0" />;
-}
+});
+
+export default MapView;

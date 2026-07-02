@@ -106,7 +106,13 @@ export const Route = createFileRoute("/api/public/kataster/search")({
                 `&sr=4326&layers=${layer}&searchText=${encodeURIComponent(q)}`;
             }
 
-            const res = await fetch(upstream, { headers: { Accept: "application/json" } });
+            const res = await fetch(upstream, {
+              headers: {
+                Accept: "application/json",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                Referer: "https://kataster.skgeodesy.sk/",
+              },
+            });
             if (!res.ok) continue;
             const data = (await res.json()) as {
               features?: Array<{ attributes: Record<string, unknown>; geometry: unknown }>;

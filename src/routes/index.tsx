@@ -1,40 +1,38 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   Layers,
-  Ruler,
-  Info,
+  Locate,
+  Plus,
+  Minus,
   MapPin,
   Map as MapIcon,
   Mountain,
   Satellite,
-  Printer,
-  Share2,
-  HelpCircle,
   X,
-  Locate,
   Loader2,
   Shield,
   LogIn,
+  ExternalLink,
 } from "lucide-react";
 import logo from "@/assets/geo2-logo.png.asset.json";
-import type { MapMarker } from "@/components/MapView";
+import type { MapMarker, MapViewHandle, ParcelInfo } from "@/components/MapView";
 import { getSession, type Session } from "@/lib/auth";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "GeoBukový — Mapový portál Slovensko" },
+      { title: "GeoBukovÃ½ â€” MapovÃ½ portÃ¡l Slovensko" },
       {
         name: "description",
         content:
-          "Mapový portál pre Slovensko — kataster nehnuteľností, ortofotomapy, parcely a vyhľadávanie adries. GeoBukový — geodetická kancelária GEO2.",
+          "MapovÃ½ portÃ¡l pre Slovensko â€” kataster nehnuteÄ¾nostÃ­, ortofotomapy, parcely a vyhÄ¾adÃ¡vanie adries. GeoBukovÃ½ â€” geodetickÃ¡ kancelÃ¡ria GEO2.",
       },
-      { property: "og:title", content: "GeoBukový — Mapový portál" },
+      { property: "og:title", content: "GeoBukovÃ½ â€” MapovÃ½ portÃ¡l" },
       {
         property: "og:description",
-        content: "Mapový portál pre kataster a geodetické služby na Slovensku.",
+        content: "MapovÃ½ portÃ¡l pre kataster a geodetickÃ© sluÅ¾by na Slovensku.",
       },
     ],
   }),
@@ -44,7 +42,6 @@ export const Route = createFileRoute("/")({
 const MapView = lazy(() => import("@/components/MapView"));
 
 type BaseLayer = "osm" | "satellite" | "topo";
-type PanelKey = "layers" | "search" | "info" | "tools" | null;
 
 interface PlaceHit {
   kind: "place";
@@ -62,15 +59,16 @@ interface ParcelHit {
   title: string;
   subtitle: string;
   layerName: string;
+  rawAttributes?: Record<string, unknown>;
 }
 type Hit = PlaceHit | ParcelHit;
 
-// Detects "1155/14", "1155-14", "1155" — a token that looks like a parcel number
 const PARCEL_TOKEN = /\b\d{1,6}(?:\s*[/-]\s*\d{1,4})?\b/;
 
 function Portal() {
+  const mapRef = useRef<MapViewHandle>(null);
   const [mounted, setMounted] = useState(false);
-  const [panel, setPanel] = useState<PanelKey>("layers");
+  const [showLayers, setShowLayers] = useState(false);
   const [base, setBase] = useState<BaseLayer>("osm");
   const [showCadastre, setShowCadastre] = useState(true);
   const [cadastreOpacity, setCadastreOpacity] = useState(85);
@@ -78,8 +76,8 @@ function Portal() {
   const [orthoOpacity, setOrthoOpacity] = useState(95);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [marker, setMarker] = useState<MapMarker | null>(null);
+  const [selectedParcel, setSelectedParcel] = useState<ParcelInfo | null>(null);
 
-  // Search state
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -150,6 +148,7 @@ function Portal() {
               title: r.label,
               subtitle: r.sublabel || r.layerName,
               layerName: r.layerName,
+              rawAttributes: r.attributes || {},
             }));
           } catch {
             return [] as ParcelHit[];
@@ -183,24 +182,60 @@ function Portal() {
     setMarker({ lat: h.lat, lng: h.lng, label: h.title, zoom: h.kind === "parcel" ? 18 : 17 });
     setShowHits(false);
     setQuery(h.title);
+    if (h.kind === "parcel") {
+      const a = h.rawAttributes || {};
+      const pick = (...keys: string[]) => {
+        for (const k of keys) {
+          for (const key of Object.keys(a)) {
+            if (key.toLowerCase().includes(k.toLowerCase()) && a[key] != null && String(a[key]).trim() !== "") {
+              return String(a[key]);
+            }
+          }
+        }
+        return null;
+      };
+      setSelectedParcel({
+        parcelNo: pick("ÄÃ­slo parcely", "parcelnÃ© ÄÃ­slo", "cislo_parcely", "parcelnÃ©", "parcelne") || h.title.replace("Parcela ", ""),
+        ku: pick("nÃ¡zov katastrÃ¡lneho", "nÃ¡zov_ku", "nazov_ku") || "",
+        lv: pick("list vlastnÃ­ctva", "listu vlastnÃ­ctva", "ÄÃ­slo listu", "cislo_lv", "list vlast"),
+        vymera: pick("vymera", "vÃ½mera"),
+        druh: pick("druh pozemku", "druh_pozemku", "druh"),
+        layer: h.layerName,
+        lat: h.lat,
+        lng: h.lng,
+        zbgisUrl: `https://zbgis.skgeodesy.sk/mkzbgis/sk/kataster?pos=${h.lat.toFixed(6)},${h.lng.toFixed(6)},19&bm=zbgis&sc_p=kn`,
+        rawAttributes: a,
+      });
+    }
   };
 
+  const handleParcelSelect = useCallback((info: ParcelInfo) => {
+    setSelectedParcel(info);
+  }, []);
 
   const locateMe = () => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
-        // Only accept if inside SK bounds
         if (latitude >= 47.4 && latitude <= 49.9 && longitude >= 16.4 && longitude <= 22.9) {
-          setMarker({ lat: latitude, lng: longitude, label: "Vaša poloha", zoom: 15 });
+          setMarker({ lat: latitude, lng: longitude, label: "VaÅ¡a poloha", zoom: 15 });
         } else {
-          alert("Vaša poloha je mimo územia Slovenska.");
+          // eslint-disable-next-line no-alert
+          alert("VaÅ¡a poloha je mimo Ãºzemia Slovenska.");
         }
       },
-      () => alert("Polohu sa nepodarilo získať."),
+      () => {
+        // eslint-disable-next-line no-alert
+        alert("Polohu sa nepodarilo zÃ­skaÅ¥.");
+      },
     );
   };
+
+  const backToSearch = useCallback(() => {
+    setSelectedParcel(null);
+    mapRef.current?.clearParcel();
+  }, []);
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-background text-foreground">
@@ -208,13 +243,13 @@ function Portal() {
       <header className="absolute inset-x-0 top-0 z-[1000] flex h-14 items-center border-b border-border bg-surface">
         <a
           href="https://geobukovy.sk"
-          className="flex h-full items-center gap-2.5 border-r border-border px-4"
+          className="flex h-full shrink-0 items-center gap-2.5 border-r border-border px-4"
         >
           <img src={logo.url} alt="GEO2" className="h-9 w-9 object-contain" />
           <div className="leading-tight">
-            <div className="font-display text-[15px] font-semibold tracking-tight">GeoBukový</div>
+            <div className="font-display text-[15px] font-semibold tracking-tight">GeoBukovÃ½</div>
             <div className="text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
-              Mapový portál · Slovensko
+              MapovÃ½ portÃ¡l Â· Slovensko
             </div>
           </div>
         </a>
@@ -235,8 +270,8 @@ function Portal() {
                 if (e.key === "Enter" && hits && hits.length > 0) pickHit(hits[0]);
                 if (e.key === "Escape") setShowHits(false);
               }}
-              placeholder="Hľadať obec, adresu, ulicu alebo miesto na Slovensku…"
-              className="h-10 w-full rounded-md border border-border bg-surface-2 pl-9 pr-20 text-[13.5px] placeholder:text-muted-foreground/80 focus:border-primary focus:bg-surface focus:outline-none focus:ring-2 focus:ring-ring/25"
+              placeholder="HÄ¾adaÅ¥ parcelu, obec, ulicu alebo adresuâ€¦"
+              className="h-10 w-full rounded-md border border-border bg-surface-2 pl-9 pr-9 text-[13.5px] placeholder:text-muted-foreground/60 focus:border-primary focus:bg-surface focus:outline-none focus:ring-2 focus:ring-ring/25"
             />
             {query && (
               <button
@@ -244,19 +279,20 @@ function Portal() {
                   setQuery("");
                   setHits(null);
                   setShowHits(false);
+                  if (selectedParcel) backToSearch();
                 }}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label="Vymazať"
+                className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="VymazaÅ¥"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
             )}
 
             {showHits && hits && (
-              <div className="absolute left-0 right-0 top-full z-[1001] mt-1.5 max-h-[60vh] overflow-y-auto rounded-md border border-border bg-surface shadow-lg">
+              <div className="absolute left-0 right-0 top-full z-[1001] mt-1.5 max-h-[60vh] overflow-y-auto rounded-md border border-border bg-surface">
                 {hits.length === 0 ? (
                   <div className="px-3 py-4 text-center text-[12.5px] text-muted-foreground">
-                    Žiadne výsledky pre „{query}"
+                    Å½iadne vÃ½sledky pre â€ž{query}"
                   </div>
                 ) : (
                   hits.map((h) => (
@@ -285,201 +321,38 @@ function Portal() {
           </div>
         </div>
 
-        <div className="hidden h-full items-center gap-1 border-l border-border px-3 md:flex">
-          <TopAction icon={<Printer className="h-4 w-4" />} label="Tlač" onClick={() => window.print()} />
-          <TopAction
-            icon={<Share2 className="h-4 w-4" />}
-            label="Zdieľať"
-            onClick={() => {
-              navigator.clipboard?.writeText(window.location.href);
-            }}
-          />
-          <TopAction icon={<HelpCircle className="h-4 w-4" />} label="Pomoc" onClick={() => setPanel("info")} />
-        </div>
-
-        <div className="flex h-full items-center border-l border-border px-2">
+        <div className="flex h-full shrink-0 items-center px-2">
           <Link
             to={session ? "/admin" : "/login"}
             className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-[12.5px] font-medium text-primary-foreground hover:opacity-90"
           >
             {session ? <Shield className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
-            <span className="hidden sm:inline">{session ? "Admin" : "Prihlásenie"}</span>
+            <span className="hidden sm:inline">{session ? "Admin" : "PrihlÃ¡senie"}</span>
           </Link>
         </div>
       </header>
 
-      {/* Left rail */}
-      <nav className="absolute left-0 top-14 bottom-0 z-[999] flex w-14 flex-col items-center gap-1 border-r border-border bg-rail py-3 text-rail-foreground">
-        <RailButton icon={<Layers className="h-[18px] w-[18px]" />} label="Vrstvy" active={panel === "layers"} onClick={() => setPanel(panel === "layers" ? null : "layers")} />
-        <RailButton icon={<MapPin className="h-[18px] w-[18px]" />} label="Vyhľadávanie" active={panel === "search"} onClick={() => setPanel(panel === "search" ? null : "search")} />
-        <RailButton icon={<Ruler className="h-[18px] w-[18px]" />} label="Meranie" active={panel === "tools"} onClick={() => setPanel(panel === "tools" ? null : "tools")} />
-        <RailButton icon={<Info className="h-[18px] w-[18px]" />} label="Informácie" active={panel === "info"} onClick={() => setPanel(panel === "info" ? null : "info")} />
-
-        <div className="mt-auto flex flex-col items-center gap-1">
-          <RailDivider />
-          <RailButton icon={<Locate className="h-[18px] w-[18px]" />} label="Moja poloha" onClick={locateMe} />
-        </div>
-      </nav>
-
-      {/* Side panel */}
-      {panel && (
-        <section
-          className="absolute left-14 top-14 bottom-0 z-[998] w-[336px] border-r border-border bg-surface"
-          style={{ boxShadow: "8px 0 24px -16px oklch(0.2 0.04 155 / 0.18)" }}
-        >
-          <header className="flex h-11 items-center justify-between border-b border-border px-4">
-            <h2 className="font-display text-[13px] font-semibold uppercase tracking-[0.1em] text-foreground">
-              {panel === "layers" && "Mapové vrstvy"}
-              {panel === "search" && "Vyhľadávanie"}
-              {panel === "tools" && "Meracie nástroje"}
-              {panel === "info" && "O portáli"}
-            </h2>
-            <button
-              onClick={() => setPanel(null)}
-              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-              aria-label="Zavrieť"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </header>
-
-          <div className="h-[calc(100%-2.75rem)] overflow-y-auto">
-            {panel === "layers" && (
-              <div className="divide-y divide-border">
-                <Section title="Tematické vrstvy">
-                  <LayerRow
-                    label="Kataster nehnuteľností (SK)"
-                    sublabel="ÚGKK SR · WMS"
-                    swatch="cadastre"
-                    active={showCadastre}
-                    opacity={cadastreOpacity}
-                    onToggle={() => setShowCadastre((v) => !v)}
-                    onOpacity={setCadastreOpacity}
-                  />
-                  <LayerRow
-                    label="Ortofotomozaika 2023 (SK)"
-                    sublabel="ÚGKK SR · WMS"
-                    swatch="ortho"
-                    active={showOrtho}
-                    opacity={orthoOpacity}
-                    onToggle={() => setShowOrtho((v) => !v)}
-                    onOpacity={setOrthoOpacity}
-                  />
-                </Section>
-
-                <Section title="Podkladová mapa">
-                  <div className="grid grid-cols-3 gap-2 p-3 pt-2">
-                    <BaseTile icon={<MapIcon className="h-4 w-4" />} label="Mapa" active={base === "osm"} onClick={() => setBase("osm")} />
-                    <BaseTile icon={<Satellite className="h-4 w-4" />} label="Satelit" active={base === "satellite"} onClick={() => setBase("satellite")} />
-                    <BaseTile icon={<Mountain className="h-4 w-4" />} label="Reliéf" active={base === "topo"} onClick={() => setBase("topo")} />
-                  </div>
-                </Section>
-
-                <Section title="Legenda">
-                  <ul className="space-y-2 px-4 pb-4 pt-1 text-[12px] text-muted-foreground">
-                    <LegendItem color="oklch(0.55 0.22 28)" label="Hranica parcely C-KN" />
-                    <LegendItem color="oklch(0.55 0.18 264)" label="Hranica parcely E-KN" dashed />
-                    <LegendItem color="oklch(0.42 0.1 152)" label="Hranica k.ú." />
-                    <LegendItem color="oklch(0.55 0.02 155)" label="Stavba" />
-                  </ul>
-                </Section>
-
-                <Section title="Práca s parcelami">
-                  <p className="px-4 pb-4 pt-1 text-[11.5px] leading-relaxed text-muted-foreground">
-                    Kliknutím do mapy zobrazíš detail parcely (číslo, k.ú., LV, výmera, druh pozemku).
-                    Zoznam vlastníkov a všetkých parciel na LV otvorí tlačidlo <span className="text-foreground font-medium">„Zobraziť vlastníkov (LV) v ZBGIS"</span> — údaje o vlastníkoch poskytuje výhradne portál ÚGKK SR (ZBGIS).
-                  </p>
-                </Section>
-
-                <Section title="Územie">
-                  <p className="px-4 pb-4 pt-1 text-[11.5px] leading-relaxed text-muted-foreground">
-                    Mapový portál je obmedzený výhradne na územie Slovenskej republiky.
-                  </p>
-                </Section>
-              </div>
-            )}
-
-            {panel === "search" && (
-              <div className="p-4">
-                <label className="mb-1.5 block text-[11px] font-medium text-muted-foreground">
-                  Hľadať miesto na Slovensku
-                </label>
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  className="mb-3 h-9 w-full rounded-md border border-border bg-surface-2 px-3 text-[13px] focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring/25"
-                  placeholder="napr. Námestovo, Bratislava, Hlavná 25…"
-                />
-
-                {hits && (
-                  <div className="rounded-md border border-border bg-surface-2">
-                    {hits.length === 0 && (
-                      <div className="p-3 text-center text-[12px] text-muted-foreground">
-                        Žiadne výsledky
-                      </div>
-                    )}
-                    {hits.map((h) => (
-                      <button
-                        key={h.id}
-                        onClick={() => pickHit(h)}
-                        className="flex w-full items-start gap-2 border-b border-border px-3 py-2 text-left last:border-b-0 hover:bg-muted"
-                      >
-                        <MapPin className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${h.kind === "parcel" ? "text-red-600" : "text-primary"}`} />
-                        <div className="min-w-0">
-                          <div className="truncate text-[12.5px] font-medium text-foreground">
-                            {h.title}
-                          </div>
-                          <div className="truncate text-[11px] text-muted-foreground">
-                            {h.subtitle}
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                <p className="mt-3 text-[11.5px] leading-relaxed text-muted-foreground">
-                  Geokódovanie cez OpenStreetMap Nominatim, obmedzené na územie Slovenska.
-                </p>
-              </div>
-            )}
-
-            {panel === "tools" && (
-              <div className="p-3">
-                <ToolRow label="Vzdialenosť" hint="Klikni do mapy pre meranie" icon={<Ruler className="h-4 w-4" />} />
-                <ToolRow label="Plocha" hint="Polygónové meranie plôch" icon={<Layers className="h-4 w-4" />} />
-                <ToolRow label="Súradnice bodu" hint="WGS-84 / S-JTSK" icon={<MapPin className="h-4 w-4" />} />
-                <p className="px-2 pt-3 text-[11.5px] leading-relaxed text-muted-foreground">
-                  Pre kataster-presné zameranie odporúčame geodetické zameranie v teréne — kontaktujte našu kanceláriu.
-                </p>
-              </div>
-            )}
-
-            {panel === "info" && (
-              <div className="space-y-4 p-4 text-[12.5px] leading-relaxed text-muted-foreground">
-                <div>
-                  <h3 className="mb-1 font-display text-[13px] font-semibold text-foreground">GeoBukový — GEO2</h3>
-                  <p>Geodetická kancelária pre Oravu a celé Slovensko.</p>
-                </div>
-                <div className="rounded-md border border-border bg-surface-2 p-3">
-                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Kontakt</div>
-                  <a href="https://geobukovy.sk" className="mt-1 block text-[13px] font-medium text-primary hover:underline">geobukovy.sk</a>
-                  <a href="mailto:info@geobukovy.sk" className="block text-[13px] text-foreground hover:underline">info@geobukovy.sk</a>
-                </div>
-                <p className="text-[11px]">
-                  Mapový portál využíva otvorené dátové služby ÚGKK SR a OpenStreetMap. Územie portálu je obmedzené na Slovensko. Údaje sú informatívne.
-                </p>
-              </div>
-            )}
+      {/* Sidebar â€” pure detail panel */}
+      <aside className="absolute left-0 top-14 bottom-0 z-[900] flex w-[340px] flex-col border-r border-border bg-surface">
+        {selectedParcel ? (
+          <ParcelDetail info={selectedParcel} onClear={backToSearch} />
+        ) : (
+          <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
+            <MapPin className="mb-3 h-8 w-8 text-muted-foreground/20" strokeWidth={1.5} />
+            <p className="text-sm font-medium text-foreground">Vyberte parcelu</p>
+            <p className="mt-1.5 max-w-[200px] text-[12px] leading-relaxed text-muted-foreground">
+              Kliknite na mapu alebo vyhÄ¾adajte parcelu v hornom vyhÄ¾adÃ¡vanÃ­.
+            </p>
           </div>
-        </section>
-      )}
+        )}
+      </aside>
 
       {/* Map */}
-      <main className="absolute inset-0 top-14 left-14">
+      <main className="absolute inset-0 top-14" style={{ left: "340px" }}>
         {mounted ? (
           <Suspense fallback={<MapSkeleton />}>
             <MapView
+              ref={mapRef}
               base={base}
               showCadastre={showCadastre}
               cadastreOpacity={cadastreOpacity / 100}
@@ -487,6 +360,7 @@ function Portal() {
               orthoOpacity={orthoOpacity / 100}
               marker={marker}
               onCoords={(lat, lng) => setCoords({ lat, lng })}
+              onParcelSelect={handleParcelSelect}
             />
           </Suspense>
         ) : (
@@ -494,11 +368,102 @@ function Portal() {
         )}
       </main>
 
+      {/* Right-side controls */}
+      <div className="absolute top-[60px] right-3 z-[997] flex flex-col items-end gap-1">
+        <button
+          onClick={() => mapRef.current?.zoomIn()}
+          className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground"
+          title="PriblÃ­Å¾iÅ¥"
+          aria-label="PriblÃ­Å¾iÅ¥"
+        >
+          <Plus className="h-[18px] w-[18px]" />
+        </button>
+        <button
+          onClick={() => mapRef.current?.zoomOut()}
+          className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground"
+          title="OddialiÅ¥"
+          aria-label="OddialiÅ¥"
+        >
+          <Minus className="h-[18px] w-[18px]" />
+        </button>
+        <div className="my-0.5 h-px w-8 bg-border" />
+        <button
+          onClick={locateMe}
+          className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground"
+          title="Moja poloha"
+          aria-label="Moja poloha"
+        >
+          <Locate className="h-[18px] w-[18px]" />
+        </button>
+
+        <div className="relative">
+          <button
+            onClick={() => setShowLayers((v) => !v)}
+            className={`flex h-10 w-10 items-center justify-center rounded-md border transition-colors ${
+              showLayers
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+            title="MapovÃ© vrstvy"
+            aria-label="MapovÃ© vrstvy"
+          >
+            <Layers className="h-[18px] w-[18px]" />
+          </button>
+
+          {showLayers && (
+            <div className="absolute right-0 top-full mt-1.5 w-[260px] origin-top-right rounded-lg border border-border bg-surface">
+              <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  MapovÃ© vrstvy
+                </span>
+                <button
+                  onClick={() => setShowLayers(false)}
+                  className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              <div className="border-b border-border px-3 py-2.5">
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  PodkladovÃ¡ mapa
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <BaseTile tileKey="osm" label="Mapa" active={base === "osm"} onClick={() => setBase("osm")} />
+                  <BaseTile tileKey="satellite" label="Satelit" active={base === "satellite"} onClick={() => setBase("satellite")} />
+                  <BaseTile tileKey="topo" label="ReliÃ©f" active={base === "topo"} onClick={() => setBase("topo")} />
+                </div>
+              </div>
+
+              <div className="px-3 py-2">
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  PrekryvnÃ© vrstvy
+                </div>
+                <LayerRow
+                  label="Kataster nehnuteÄ¾nostÃ­"
+                  active={showCadastre}
+                  opacity={cadastreOpacity}
+                  onToggle={() => setShowCadastre((v) => !v)}
+                  onOpacity={setCadastreOpacity}
+                />
+                <LayerRow
+                  label="Ortofotomozaika 2023"
+                  active={showOrtho}
+                  opacity={orthoOpacity}
+                  onToggle={() => setShowOrtho((v) => !v)}
+                  onOpacity={setOrthoOpacity}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Coordinate HUD */}
-      <div className="pointer-events-none absolute bottom-2 right-14 z-[997] flex items-center gap-3 rounded-md border border-border bg-surface/95 px-3 py-1.5 font-mono text-[11px] text-foreground shadow-sm backdrop-blur-md">
+      <div className="pointer-events-none absolute bottom-2 right-3 z-[997] flex items-center gap-3 rounded-md border border-border bg-surface/95 px-3 py-1.5 font-mono text-[11px] text-foreground shadow-sm backdrop-blur-md">
         <span className="text-muted-foreground">WGS-84</span>
-        <span>{coords ? `${coords.lat.toFixed(5)}° N` : "—"}</span>
-        <span>{coords ? `${coords.lng.toFixed(5)}° E` : "—"}</span>
+        <span>{coords ? `${coords.lat.toFixed(5)}Â° N` : "â€”"}</span>
+        <span>{coords ? `${coords.lng.toFixed(5)}Â° E` : "â€”"}</span>
       </div>
     </div>
   );
@@ -506,156 +471,337 @@ function Portal() {
 
 /* ---------------- subcomponents ---------------- */
 
-function TopAction({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick?: () => void }) {
+/* --- Map tile snapshot (Google Maps-style header image) --- */
+
+function MapSnapshot({ lat, lng }: { lat: number; lng: number }) {
+  const zoom = 16;
+  const TILE = 256;
+  const n = Math.pow(2, zoom);
+
+  const tiles = useMemo(() => {
+    const ftx = ((lng + 180) / 360) * n;
+    const fty =
+      ((1 - Math.log(Math.tan((lat * Math.PI) / 180) + 1 / Math.cos((lat * Math.PI) / 180)) / Math.PI) / 2) * n;
+
+    const cx = Math.floor(ftx);
+    const cy = Math.floor(fty);
+    const ox = (ftx - cx) * TILE;
+    const oy = (fty - cy) * TILE;
+
+    const result: { x: number; y: number; left: string; top: string }[] = [];
+
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const x = (((cx + dx) % n) + n) % n;
+        const y = cy + dy;
+        if (y < 0 || y >= n) continue;
+        result.push({
+          x,
+          y,
+          left: `calc(50% - ${ox}px + ${dx * TILE}px)`,
+          top: `calc(50% - ${oy}px + ${dy * TILE}px)`,
+        });
+      }
+    }
+
+    return result;
+  }, [lat, lng]);
+
   return (
-    <button
-      onClick={onClick}
-      className="flex h-9 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-    >
-      {icon}
-      <span className="hidden lg:inline">{label}</span>
-    </button>
+    <div className="relative w-full aspect-[16/9] shrink-0 overflow-hidden bg-[#e8edf1]">
+      {tiles.map((t) => (
+        <div
+          key={`${t.x}-${t.y}`}
+          className="absolute bg-cover bg-no-repeat"
+          style={{
+            width: TILE,
+            height: TILE,
+            left: t.left,
+            top: t.top,
+            backgroundImage: `url(https://a.tile.openstreetmap.org/${zoom}/${t.x}/${t.y}.png)`,
+          }}
+        />
+      ))}
+    </div>
   );
 }
 
-function RailButton({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active?: boolean; onClick?: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      className={`group relative grid h-11 w-11 place-items-center rounded-md transition-colors ${
-        active
-          ? "bg-primary text-primary-foreground"
-          : "text-rail-foreground/70 hover:bg-white/5 hover:text-rail-foreground"
-      }`}
-    >
-      {icon}
-      {active && <span className="absolute left-0 top-1/2 h-6 w-[2px] -translate-y-1/2 rounded-r bg-gold" />}
-      <span className="pointer-events-none absolute left-full ml-2 whitespace-nowrap rounded-md bg-rail px-2 py-1 text-[11px] font-medium text-rail-foreground opacity-0 shadow-md transition-opacity group-hover:opacity-100">
-        {label}
-      </span>
-    </button>
-  );
-}
+/* --- Place card detail --- */
 
-function RailDivider() {
-  return <div className="my-1 h-px w-7 bg-white/10" />;
+function ParcelDetail({ info, onClear }: { info: ParcelInfo; onClear: () => void }) {
+  const a = info.rawAttributes || {};
+  const [lvData, setLvData] = useState<{ owners: { meno: string; adresa: string; podiel: string }[]; loading: boolean }>({ owners: [], loading: false });
+
+  // Extract KU numeric code from raw attributes for LV lookup
+  const kuCodeRaw = useMemo(() => {
+    for (const [key, val] of Object.entries(a)) {
+      const k = key.toLowerCase();
+      if (/kÃ³d katastrÃ¡lneho|katu|ku_kod|kÃ³d k\.Ãº\./.test(k) && val != null && String(val).trim() !== "") {
+        return String(val);
+      }
+    }
+    for (const val of Object.values(a)) {
+      const s = String(val ?? "").trim();
+      if (/^\d{6}$/.test(s)) return s;
+    }
+    return null;
+  }, [a]);
+
+  useEffect(() => {
+    if (!info.lv || !kuCodeRaw) return;
+    let cancelled = false;
+    setLvData({ owners: [], loading: true });
+    fetch(`/api/public/kataster/lv?ku=${encodeURIComponent(kuCodeRaw)}&lv=${encodeURIComponent(info.lv)}&lat=${info.lat}&lng=${info.lng}&parcel=${encodeURIComponent(info.parcelNo)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        setLvData({ owners: data?.owners || [], loading: false });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLvData({ owners: [], loading: false });
+      });
+    return () => { cancelled = true; };
+  }, [info.lv, kuCodeRaw]);
+
+  const categorizeFields = () => {
+    const locFields: { label: string; val: string; key: string }[] = [];
+    const paramFields: { label: string; val: string; key: string }[] = [];
+    const otherFields: { label: string; val: string; key: string }[] = [];
+
+    for (const [key, val] of Object.entries(a)) {
+      const k = key.toLowerCase();
+      const v = String(val);
+      // skip fields already shown via info.xxx props
+      if (/objectid|shape|globalid|layer_name|layername/.test(k)) continue;
+      if (/nÃ¡zov katastrÃ¡lneho|nazov_ku|katastrÃ¡lne Ãºzemie|nÃ¡zovku/.test(k)) continue;
+      if (/list vlastnÃ­ctva|listu vlastnÃ­ctva|cislo_lv|list_vlast/.test(k)) continue;
+      if (/vymera|vÃ½mera/.test(k)) continue;
+      if (/druh pozemku|druh_pozemku/.test(k)) continue;
+      if (/ÄÃ­slo parcely|parcelnÃ© ÄÃ­slo|cislo_parcely|parcelne_cislo/.test(k)) continue;
+
+      if (/obec|municip/.test(k)) { locFields.push({ label: "Obec", val: v, key }); continue; }
+      if (/okres/.test(k)) { locFields.push({ label: "Okres", val: v, key }); continue; }
+      if (/kraj/.test(k)) { locFields.push({ label: "Kraj", val: v, key }); continue; }
+      if (/kÃ³d katastrÃ¡lneho|katu|ku_kod|kÃ³d k\.Ãº\./.test(k)) { locFields.push({ label: "KÃ³d k.Ãº.", val: v, key }); continue; }
+
+      if (/kÃ³d druhu|kod_druhu/.test(k)) { paramFields.push({ label: "KÃ³d druhu", val: v, key }); continue; }
+      if (/spÃ´sob vyu|sposob_vyu/.test(k)) { paramFields.push({ label: "SpÃ´sob vyuÅ¾itia", val: v, key }); continue; }
+      if (/bpej/.test(k)) { paramFields.push({ label: "BPEJ", val: v, key }); continue; }
+      if (/typ parcely|typ_parcely/.test(k)) { paramFields.push({ label: "Typ parcely", val: v, key }); continue; }
+      if (/druh ochrany|druh_chrany/.test(k)) { paramFields.push({ label: "Druh ochrany", val: v, key }); continue; }
+
+      if (/poznÃ¡mka|poznamka/.test(k)) { otherFields.push({ label: "PoznÃ¡mka", val: v, key }); continue; }
+      if (/stav/.test(k)) { otherFields.push({ label: "Stav", val: v, key }); continue; }
+      if (/dÃ¡tum|datum/.test(k)) { otherFields.push({ label: key, val: v, key }); continue; }
+      otherFields.push({ label: key, val: v, key });
+    }
+    return { locFields, paramFields, otherFields };
+  };
+
+  const { locFields, paramFields, otherFields } = categorizeFields();
+  const hasParams = info.vymera || paramFields.length > 0;
+
+  // Resolve KU name â€” raw attributes may have the name under a different key
+  let kuName = info.ku;
+  if (/^\d+$/.test(kuName)) {
+    for (const [key, val] of Object.entries(a)) {
+      const k = key.toLowerCase();
+      if (/nÃ¡zov katastrÃ¡lneho|nÃ¡zov_ku|nazov_ku|katastrÃ¡lne Ãºzemie/.test(k)) {
+        kuName = String(val);
+        break;
+      }
+    }
+  }
+  const kuCode = locFields.find((f) => f.label === "KÃ³d k.Ãº.")?.val;
+  const obec = locFields.find((f) => f.label === "Obec")?.val;
+
+  const subtitle = [
+    kuName ? `k.Ãº. ${kuName}${kuCode ? ` (${kuCode})` : ""}` : null,
+    obec ? `obec ${obec}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Map snapshot header â€” flush, no padding, X button overlaid */}
+      <div className="relative shrink-0">
+        <MapSnapshot lat={info.lat} lng={info.lng} />
+        <button
+          onClick={onClear}
+          className="absolute right-2 top-2 z-10 rounded-md border border-border bg-background/90 p-1.5 text-muted-foreground hover:bg-background hover:text-foreground"
+          aria-label="ZatvoriÅ¥"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Title block */}
+      <div className="shrink-0 px-4 pb-3 pt-3">
+        <h2 className="text-[16px] font-semibold text-foreground">{info.parcelNo}</h2>
+        {subtitle && (
+          <p className="mt-0.5 truncate text-[12.5px] text-muted-foreground">{subtitle}</p>
+        )}
+        {info.lv && (
+          <div className="mt-2 flex items-center gap-2 text-[12px] text-muted-foreground">
+            <span>LV {info.lv}</span>
+            {info.vymera && <><span className="text-border">Â·</span><span>{info.vymera} mÂ²</span></>}
+            {info.druh && <><span className="text-border">Â·</span><span>{info.druh}</span></>}
+          </div>
+        )}
+      </div>
+
+      {/* Divider */}
+      <div className="shrink-0 mx-4 border-t border-border" />
+
+      {/* Scrollable info sections */}
+      <div className="flex-1 overflow-y-auto pt-3">
+        {(kuName || locFields.some((f) => f.label !== "KÃ³d k.Ãº." && f.label !== "Obec")) && (
+          <Section title="Poloha">
+            {kuName && <Row label="KatastrÃ¡lne Ãºzemie" value={kuName} />}
+            {locFields
+              .filter((f) => f.label !== "KÃ³d k.Ãº." && f.label !== "Obec")
+              .map((f) => <Row key={f.key} label={f.label} value={f.val} />)}
+            <Row label="SÃºradnice" value={`${info.lat.toFixed(5)}Â° N, ${info.lng.toFixed(5)}Â° E`} mono />
+          </Section>
+        )}
+
+        {hasParams && (
+          <Section title="Parametre">
+            {info.vymera && <Row label="VÃ½mera" value={`${info.vymera} mÂ²`} />}
+            {paramFields.map((f) => <Row key={f.key} label={f.label} value={f.val} />)}
+          </Section>
+        )}
+
+        {otherFields.length > 0 && (
+          <Section title="ÄŽalÅ¡ie Ãºdaje">
+            {otherFields.map((f) => <Row key={f.key} label={f.label} value={f.val} />)}
+          </Section>
+        )}
+
+        {lvData.loading && (
+          <div className="px-4 pb-4">
+            <div className="mb-2 flex items-center gap-2">
+              <div className="h-3 w-0.5 shrink-0 rounded-full bg-muted-foreground/20" />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">VlastnÃ­ci</span>
+            </div>
+            <div className="py-2 text-[12px] text-muted-foreground">NaÄÃ­tavam Ãºdaje o vlastnÃ­kochâ€¦</div>
+          </div>
+        )}
+
+        {!lvData.loading && lvData.owners.length > 0 && (
+          <Section title="VlastnÃ­ci">
+            {lvData.owners.map((o, i) => (
+              <Row key={i} label={o.meno} value={o.adresa ? `${o.adresa}${o.podiel ? ` Â· ${o.podiel}` : ""}` : o.podiel || "â€”"} />
+            ))}
+          </Section>
+        )}
+      </div>
+
+      {/* ZBGIS footer */}
+      <div className="shrink-0 border-t border-border px-4 py-3">
+        <a
+          href={info.zbgisUrl}
+          target="_blank"
+          rel="noopener"
+          className="flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-2.5 text-[13px] font-medium text-primary-foreground hover:opacity-90"
+        >
+          <ExternalLink className="h-4 w-4" />
+          ZobraziÅ¥ v ZBGIS
+        </a>
+      </div>
+    </div>
+  );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div>
-      <div className="px-4 pt-4 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-        {title}
+    <div className="px-4 pb-4">
+      <div className="mb-2 flex items-center gap-2">
+        <div className="h-3 w-0.5 shrink-0 rounded-full bg-muted-foreground/20" />
+        <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{title}</span>
       </div>
-      {children}
+      <div className="space-y-0.5">{children}</div>
+    </div>
+  );
+}
+
+function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="py-1">
+      <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">{label}</div>
+      <div className={`mt-px text-[13px] text-foreground ${mono ? "font-mono" : ""}`}>{value}</div>
     </div>
   );
 }
 
 function LayerRow({
   label,
-  sublabel,
-  swatch,
   active,
   opacity,
   onToggle,
   onOpacity,
 }: {
   label: string;
-  sublabel: string;
-  swatch: "cadastre" | "ortho";
   active: boolean;
   opacity: number;
   onToggle: () => void;
   onOpacity: (v: number) => void;
 }) {
   return (
-    <div className="px-4 py-3">
-      <label className="flex cursor-pointer items-start gap-3">
+    <div className="py-1.5">
+      <label className="flex cursor-pointer items-center gap-2.5">
         <input
           type="checkbox"
           checked={active}
           onChange={onToggle}
-          className="mt-0.5 h-4 w-4 cursor-pointer rounded border-border-strong accent-[var(--color-primary)]"
+          className="h-3.5 w-3.5 cursor-pointer accent-primary"
         />
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <SwatchIcon kind={swatch} />
-            <span className="text-[13px] font-medium text-foreground">{label}</span>
-          </div>
-          <div className="mt-0.5 pl-7 text-[11px] text-muted-foreground">{sublabel}</div>
-        </div>
+        <span className="flex-1 text-[12.5px] font-medium text-foreground">{label}</span>
+        {active && (
+          <span className="font-mono text-[10px] text-muted-foreground">{opacity}%</span>
+        )}
       </label>
       {active && (
-        <div className="mt-2.5 flex items-center gap-2 pl-7">
-          <span className="w-12 text-[10.5px] uppercase tracking-wider text-muted-foreground">Krytie</span>
+        <div className="mt-1.5 flex items-center gap-2 pl-6">
           <input
             type="range"
             min={10}
             max={100}
             value={opacity}
             onChange={(e) => onOpacity(Number(e.target.value))}
-            className="h-1 flex-1 cursor-pointer accent-[var(--color-primary)]"
+            className="h-1 flex-1 cursor-pointer accent-primary"
           />
-          <span className="w-9 text-right font-mono text-[11px] text-muted-foreground">{opacity}%</span>
         </div>
       )}
     </div>
   );
 }
 
-function SwatchIcon({ kind }: { kind: "cadastre" | "ortho" }) {
-  if (kind === "cadastre") {
-    return (
-      <div className="grid h-5 w-5 place-items-center rounded-sm border border-border bg-surface-2">
-        <div className="h-2 w-2 border border-[oklch(0.55_0.22_28)]" />
-      </div>
-    );
-  }
-  return (
-    <div className="h-5 w-5 rounded-sm bg-[linear-gradient(135deg,oklch(0.55_0.08_140),oklch(0.4_0.06_150)_45%,oklch(0.55_0.05_85)_75%,oklch(0.7_0.08_85))]" />
-  );
-}
+const TILE_PREVIEWS: Record<string, string> = {
+  osm: "https://a.tile.openstreetmap.org/7/70/44.png",
+  satellite: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/7/44/70",
+  topo: "https://a.tile.opentopomap.org/7/70/44.png",
+};
 
-function BaseTile({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) {
+function BaseTile({ label, active, onClick, tileKey }: { label: string; active: boolean; onClick: () => void; tileKey: string }) {
+  const previewUrl = TILE_PREVIEWS[tileKey];
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col items-center gap-1 rounded-md border px-2 py-2.5 text-[11.5px] font-medium transition-all ${
+      className={`flex flex-col items-center gap-1 rounded-md border text-[11px] font-medium transition-colors ${
         active
           ? "border-primary bg-primary text-primary-foreground"
           : "border-border bg-surface text-muted-foreground hover:border-border-strong hover:text-foreground"
       }`}
     >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
-function ToolRow({ icon, label, hint }: { icon: React.ReactNode; label: string; hint: string }) {
-  return (
-    <button className="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left hover:bg-muted">
-      <div className="grid h-8 w-8 place-items-center rounded-md bg-accent text-accent-foreground">{icon}</div>
-      <div className="flex-1">
-        <div className="text-[13px] font-medium text-foreground">{label}</div>
-        <div className="text-[11px] text-muted-foreground">{hint}</div>
-      </div>
-    </button>
-  );
-}
-
-function LegendItem({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
-  return (
-    <li className="flex items-center gap-2.5">
-      <span
-        className="inline-block h-0 w-6"
-        style={{ borderTop: `2px ${dashed ? "dashed" : "solid"} ${color}` }}
+      <div
+        className="h-[56px] w-full rounded-t-[5px] bg-cover bg-center"
+        style={{ backgroundImage: previewUrl ? `url(${previewUrl})` : undefined }}
       />
-      {label}
-    </li>
+      <span className="pb-1.5 pt-0.5">{label}</span>
+    </button>
   );
 }
 
@@ -664,7 +810,7 @@ function MapSkeleton() {
     <div className="absolute inset-0 grid place-items-center bg-muted">
       <div className="flex flex-col items-center gap-3 text-muted-foreground">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
-        <div className="font-mono text-[11px] uppercase tracking-wider">Načítavam mapu</div>
+        <div className="font-mono text-[11px] uppercase tracking-wider">NaÄÃ­tavam mapu</div>
       </div>
     </div>
   );

@@ -13,6 +13,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPublicKatasterSearchRouteImport } from './routes/api/public/kataster/search'
+import { Route as ApiPublicKatasterLvRouteImport } from './routes/api/public/kataster/lv'
 import { Route as ApiPublicKatasterIdentifyRouteImport } from './routes/api/public/kataster/identify'
 
 const LoginRoute = LoginRouteImport.update({
@@ -35,6 +36,11 @@ const ApiPublicKatasterSearchRoute = ApiPublicKatasterSearchRouteImport.update({
   path: '/api/public/kataster/search',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicKatasterLvRoute = ApiPublicKatasterLvRouteImport.update({
+  id: '/api/public/kataster/lv',
+  path: '/api/public/kataster/lv',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicKatasterIdentifyRoute =
   ApiPublicKatasterIdentifyRouteImport.update({
     id: '/api/public/kataster/identify',
@@ -47,6 +53,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRoute
   '/login': typeof LoginRoute
   '/api/public/kataster/identify': typeof ApiPublicKatasterIdentifyRoute
+  '/api/public/kataster/lv': typeof ApiPublicKatasterLvRoute
   '/api/public/kataster/search': typeof ApiPublicKatasterSearchRoute
 }
 export interface FileRoutesByTo {
@@ -54,6 +61,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminRoute
   '/login': typeof LoginRoute
   '/api/public/kataster/identify': typeof ApiPublicKatasterIdentifyRoute
+  '/api/public/kataster/lv': typeof ApiPublicKatasterLvRoute
   '/api/public/kataster/search': typeof ApiPublicKatasterSearchRoute
 }
 export interface FileRoutesById {
@@ -62,6 +70,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRoute
   '/login': typeof LoginRoute
   '/api/public/kataster/identify': typeof ApiPublicKatasterIdentifyRoute
+  '/api/public/kataster/lv': typeof ApiPublicKatasterLvRoute
   '/api/public/kataster/search': typeof ApiPublicKatasterSearchRoute
 }
 export interface FileRouteTypes {
@@ -71,6 +80,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/login'
     | '/api/public/kataster/identify'
+    | '/api/public/kataster/lv'
     | '/api/public/kataster/search'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -78,6 +88,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/login'
     | '/api/public/kataster/identify'
+    | '/api/public/kataster/lv'
     | '/api/public/kataster/search'
   id:
     | '__root__'
@@ -85,6 +96,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/login'
     | '/api/public/kataster/identify'
+    | '/api/public/kataster/lv'
     | '/api/public/kataster/search'
   fileRoutesById: FileRoutesById
 }
@@ -93,6 +105,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRoute
   LoginRoute: typeof LoginRoute
   ApiPublicKatasterIdentifyRoute: typeof ApiPublicKatasterIdentifyRoute
+  ApiPublicKatasterLvRoute: typeof ApiPublicKatasterLvRoute
   ApiPublicKatasterSearchRoute: typeof ApiPublicKatasterSearchRoute
 }
 
@@ -126,6 +139,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicKatasterSearchRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/kataster/lv': {
+      id: '/api/public/kataster/lv'
+      path: '/api/public/kataster/lv'
+      fullPath: '/api/public/kataster/lv'
+      preLoaderRoute: typeof ApiPublicKatasterLvRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/kataster/identify': {
       id: '/api/public/kataster/identify'
       path: '/api/public/kataster/identify'
@@ -141,6 +161,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRoute,
   LoginRoute: LoginRoute,
   ApiPublicKatasterIdentifyRoute: ApiPublicKatasterIdentifyRoute,
+  ApiPublicKatasterLvRoute: ApiPublicKatasterLvRoute,
   ApiPublicKatasterSearchRoute: ApiPublicKatasterSearchRoute,
 }
 export const routeTree = rootRouteImport
