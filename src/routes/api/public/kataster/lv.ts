@@ -29,7 +29,7 @@ interface PlaywrightResponse {
   druh?: string;
 }
 
-const PLAYWRIGHT_URL = process.env.PLAYWRIGHT_SERVICE_URL;
+const PLAYWRIGHT_URL = process.env.PLAYWRIGHT_SERVICE_URL || "http://localhost:3001";
 
 async function tryPlaywright(
   ku: string,

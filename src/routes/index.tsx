@@ -23,16 +23,16 @@ import { getSession, type Session } from "@/lib/auth";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "GeoBukovÃ½ â€” MapovÃ½ portÃ¡l Slovensko" },
+      { title: "GeoBukový — Mapový portál Slovensko" },
       {
         name: "description",
         content:
-          "MapovÃ½ portÃ¡l pre Slovensko â€” kataster nehnuteÄ¾nostÃ­, ortofotomapy, parcely a vyhÄ¾adÃ¡vanie adries. GeoBukovÃ½ â€” geodetickÃ¡ kancelÃ¡ria GEO2.",
+          "Mapový portál pre Slovensko — kataster nehnuteľností, ortofotomapy, parcely a vyhľadávanie adries. GeoBukový — geodetická kancelária GEO2.",
       },
-      { property: "og:title", content: "GeoBukovÃ½ â€” MapovÃ½ portÃ¡l" },
+      { property: "og:title", content: "GeoBukový — Mapový portál" },
       {
         property: "og:description",
-        content: "MapovÃ½ portÃ¡l pre kataster a geodetickÃ© sluÅ¾by na Slovensku.",
+        content: "Mapový portál pre kataster a geodetické služby na Slovensku.",
       },
     ],
   }),
@@ -195,10 +195,10 @@ function Portal() {
         return null;
       };
       setSelectedParcel({
-        parcelNo: pick("ÄÃ­slo parcely", "parcelnÃ© ÄÃ­slo", "cislo_parcely", "parcelnÃ©", "parcelne") || h.title.replace("Parcela ", ""),
-        ku: pick("nÃ¡zov katastrÃ¡lneho", "nÃ¡zov_ku", "nazov_ku") || "",
-        lv: pick("list vlastnÃ­ctva", "listu vlastnÃ­ctva", "ÄÃ­slo listu", "cislo_lv", "list vlast"),
-        vymera: pick("vymera", "vÃ½mera"),
+        parcelNo: pick("číslo parcely", "parcelné číslo", "cislo_parcely", "parcelné", "parcelne") || h.title.replace("Parcela ", ""),
+        ku: pick("názov katastrálneho", "názov_ku", "nazov_ku") || "",
+        lv: pick("list vlastníctva", "listu vlastníctva", "číslo listu", "cislo_lv", "list vlast"),
+        vymera: pick("vymera", "výmera"),
         druh: pick("druh pozemku", "druh_pozemku", "druh"),
         layer: h.layerName,
         lat: h.lat,
@@ -219,15 +219,15 @@ function Portal() {
       (pos) => {
         const { latitude, longitude } = pos.coords;
         if (latitude >= 47.4 && latitude <= 49.9 && longitude >= 16.4 && longitude <= 22.9) {
-          setMarker({ lat: latitude, lng: longitude, label: "VaÅ¡a poloha", zoom: 15 });
+          setMarker({ lat: latitude, lng: longitude, label: "Vaša poloha", zoom: 15 });
         } else {
           // eslint-disable-next-line no-alert
-          alert("VaÅ¡a poloha je mimo Ãºzemia Slovenska.");
+          alert("Vaša poloha je mimo územia Slovenska.");
         }
       },
       () => {
         // eslint-disable-next-line no-alert
-        alert("Polohu sa nepodarilo zÃ­skaÅ¥.");
+        alert("Polohu sa nepodarilo získať.");
       },
     );
   };
@@ -247,9 +247,9 @@ function Portal() {
         >
           <img src={logo.url} alt="GEO2" className="h-9 w-9 object-contain" />
           <div className="leading-tight">
-            <div className="font-display text-[15px] font-semibold tracking-tight">GeoBukovÃ½</div>
+            <div className="font-display text-[15px] font-semibold tracking-tight">GeoBukový</div>
             <div className="text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
-              MapovÃ½ portÃ¡l Â· Slovensko
+              Mapový portál · Slovensko
             </div>
           </div>
         </a>
@@ -270,7 +270,7 @@ function Portal() {
                 if (e.key === "Enter" && hits && hits.length > 0) pickHit(hits[0]);
                 if (e.key === "Escape") setShowHits(false);
               }}
-              placeholder="HÄ¾adaÅ¥ parcelu, obec, ulicu alebo adresuâ€¦"
+              placeholder="Hľadať parcelu, obec, ulicu alebo adresu…"
               className="h-10 w-full rounded-md border border-border bg-surface-2 pl-9 pr-9 text-[13.5px] placeholder:text-muted-foreground/60 focus:border-primary focus:bg-surface focus:outline-none focus:ring-2 focus:ring-ring/25"
             />
             {query && (
@@ -282,7 +282,7 @@ function Portal() {
                   if (selectedParcel) backToSearch();
                 }}
                 className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label="VymazaÅ¥"
+                aria-label="Vymazať"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -292,7 +292,7 @@ function Portal() {
               <div className="absolute left-0 right-0 top-full z-[1001] mt-1.5 max-h-[60vh] overflow-y-auto rounded-md border border-border bg-surface">
                 {hits.length === 0 ? (
                   <div className="px-3 py-4 text-center text-[12.5px] text-muted-foreground">
-                    Å½iadne vÃ½sledky pre â€ž{query}"
+                    Žiadne výsledky pre „{query}"
                   </div>
                 ) : (
                   hits.map((h) => (
@@ -327,12 +327,12 @@ function Portal() {
             className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-[12.5px] font-medium text-primary-foreground hover:opacity-90"
           >
             {session ? <Shield className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
-            <span className="hidden sm:inline">{session ? "Admin" : "PrihlÃ¡senie"}</span>
+            <span className="hidden sm:inline">{session ? "Admin" : "Prihlásenie"}</span>
           </Link>
         </div>
       </header>
 
-      {/* Sidebar â€” pure detail panel */}
+      {/* Sidebar — pure detail panel */}
       <aside className="absolute left-0 top-14 bottom-0 z-[900] flex w-[340px] flex-col border-r border-border bg-surface">
         {selectedParcel ? (
           <ParcelDetail info={selectedParcel} onClear={backToSearch} />
@@ -341,7 +341,7 @@ function Portal() {
             <MapPin className="mb-3 h-8 w-8 text-muted-foreground/20" strokeWidth={1.5} />
             <p className="text-sm font-medium text-foreground">Vyberte parcelu</p>
             <p className="mt-1.5 max-w-[200px] text-[12px] leading-relaxed text-muted-foreground">
-              Kliknite na mapu alebo vyhÄ¾adajte parcelu v hornom vyhÄ¾adÃ¡vanÃ­.
+              Kliknite na mapu alebo vyhľadajte parcelu v hornom vyhľadávaní.
             </p>
           </div>
         )}
@@ -373,16 +373,16 @@ function Portal() {
         <button
           onClick={() => mapRef.current?.zoomIn()}
           className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground"
-          title="PriblÃ­Å¾iÅ¥"
-          aria-label="PriblÃ­Å¾iÅ¥"
+          title="Priblížiť"
+          aria-label="Priblížiť"
         >
           <Plus className="h-[18px] w-[18px]" />
         </button>
         <button
           onClick={() => mapRef.current?.zoomOut()}
           className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground"
-          title="OddialiÅ¥"
-          aria-label="OddialiÅ¥"
+          title="Oddialiť"
+          aria-label="Oddialiť"
         >
           <Minus className="h-[18px] w-[18px]" />
         </button>
@@ -404,8 +404,8 @@ function Portal() {
                 ? "border-primary bg-primary text-primary-foreground"
                 : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground"
             }`}
-            title="MapovÃ© vrstvy"
-            aria-label="MapovÃ© vrstvy"
+            title="Mapové vrstvy"
+            aria-label="Mapové vrstvy"
           >
             <Layers className="h-[18px] w-[18px]" />
           </button>
@@ -414,7 +414,7 @@ function Portal() {
             <div className="absolute right-0 top-full mt-1.5 w-[260px] origin-top-right rounded-lg border border-border bg-surface">
               <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  MapovÃ© vrstvy
+                  Mapové vrstvy
                 </span>
                 <button
                   onClick={() => setShowLayers(false)}
@@ -426,21 +426,21 @@ function Portal() {
 
               <div className="border-b border-border px-3 py-2.5">
                 <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  PodkladovÃ¡ mapa
+                  Podkladová mapa
                 </div>
                 <div className="grid grid-cols-3 gap-1.5">
                   <BaseTile tileKey="osm" label="Mapa" active={base === "osm"} onClick={() => setBase("osm")} />
                   <BaseTile tileKey="satellite" label="Satelit" active={base === "satellite"} onClick={() => setBase("satellite")} />
-                  <BaseTile tileKey="topo" label="ReliÃ©f" active={base === "topo"} onClick={() => setBase("topo")} />
+                  <BaseTile tileKey="topo" label="Reliéf" active={base === "topo"} onClick={() => setBase("topo")} />
                 </div>
               </div>
 
               <div className="px-3 py-2">
                 <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  PrekryvnÃ© vrstvy
+                  Prekryvné vrstvy
                 </div>
                 <LayerRow
-                  label="Kataster nehnuteÄ¾nostÃ­"
+                  label="Kataster nehnuteľností"
                   active={showCadastre}
                   opacity={cadastreOpacity}
                   onToggle={() => setShowCadastre((v) => !v)}
@@ -462,8 +462,8 @@ function Portal() {
       {/* Coordinate HUD */}
       <div className="pointer-events-none absolute bottom-2 right-3 z-[997] flex items-center gap-3 rounded-md border border-border bg-surface/95 px-3 py-1.5 font-mono text-[11px] text-foreground shadow-sm backdrop-blur-md">
         <span className="text-muted-foreground">WGS-84</span>
-        <span>{coords ? `${coords.lat.toFixed(5)}Â° N` : "â€”"}</span>
-        <span>{coords ? `${coords.lng.toFixed(5)}Â° E` : "â€”"}</span>
+        <span>{coords ? `${coords.lat.toFixed(5)}° N` : "—"}</span>
+        <span>{coords ? `${coords.lng.toFixed(5)}° E` : "—"}</span>
       </div>
     </div>
   );
@@ -536,7 +536,7 @@ function ParcelDetail({ info, onClear }: { info: ParcelInfo; onClear: () => void
   const kuCodeRaw = useMemo(() => {
     for (const [key, val] of Object.entries(a)) {
       const k = key.toLowerCase();
-      if (/kÃ³d katastrÃ¡lneho|katu|ku_kod|kÃ³d k\.Ãº\./.test(k) && val != null && String(val).trim() !== "") {
+      if (/kód katastrálneho|katu|ku_kod|kód k\.ú\./.test(k) && val != null && String(val).trim() !== "") {
         return String(val);
       }
     }
@@ -574,26 +574,26 @@ function ParcelDetail({ info, onClear }: { info: ParcelInfo; onClear: () => void
       const v = String(val);
       // skip fields already shown via info.xxx props
       if (/objectid|shape|globalid|layer_name|layername/.test(k)) continue;
-      if (/nÃ¡zov katastrÃ¡lneho|nazov_ku|katastrÃ¡lne Ãºzemie|nÃ¡zovku/.test(k)) continue;
-      if (/list vlastnÃ­ctva|listu vlastnÃ­ctva|cislo_lv|list_vlast/.test(k)) continue;
-      if (/vymera|vÃ½mera/.test(k)) continue;
+      if (/názov katastrálneho|nazov_ku|katastrálne územie|názovku/.test(k)) continue;
+      if (/list vlastníctva|listu vlastníctva|cislo_lv|list_vlast/.test(k)) continue;
+      if (/vymera|výmera/.test(k)) continue;
       if (/druh pozemku|druh_pozemku/.test(k)) continue;
-      if (/ÄÃ­slo parcely|parcelnÃ© ÄÃ­slo|cislo_parcely|parcelne_cislo/.test(k)) continue;
+      if (/číslo parcely|parcelné číslo|cislo_parcely|parcelne_cislo/.test(k)) continue;
 
       if (/obec|municip/.test(k)) { locFields.push({ label: "Obec", val: v, key }); continue; }
       if (/okres/.test(k)) { locFields.push({ label: "Okres", val: v, key }); continue; }
       if (/kraj/.test(k)) { locFields.push({ label: "Kraj", val: v, key }); continue; }
-      if (/kÃ³d katastrÃ¡lneho|katu|ku_kod|kÃ³d k\.Ãº\./.test(k)) { locFields.push({ label: "KÃ³d k.Ãº.", val: v, key }); continue; }
+      if (/kód katastrálneho|katu|ku_kod|kód k\.ú\./.test(k)) { locFields.push({ label: "Kód k.ú.", val: v, key }); continue; }
 
-      if (/kÃ³d druhu|kod_druhu/.test(k)) { paramFields.push({ label: "KÃ³d druhu", val: v, key }); continue; }
-      if (/spÃ´sob vyu|sposob_vyu/.test(k)) { paramFields.push({ label: "SpÃ´sob vyuÅ¾itia", val: v, key }); continue; }
+      if (/kód druhu|kod_druhu/.test(k)) { paramFields.push({ label: "Kód druhu", val: v, key }); continue; }
+      if (/spôsob vyu|sposob_vyu/.test(k)) { paramFields.push({ label: "Spôsob využitia", val: v, key }); continue; }
       if (/bpej/.test(k)) { paramFields.push({ label: "BPEJ", val: v, key }); continue; }
       if (/typ parcely|typ_parcely/.test(k)) { paramFields.push({ label: "Typ parcely", val: v, key }); continue; }
       if (/druh ochrany|druh_chrany/.test(k)) { paramFields.push({ label: "Druh ochrany", val: v, key }); continue; }
 
-      if (/poznÃ¡mka|poznamka/.test(k)) { otherFields.push({ label: "PoznÃ¡mka", val: v, key }); continue; }
+      if (/poznámka|poznamka/.test(k)) { otherFields.push({ label: "Poznámka", val: v, key }); continue; }
       if (/stav/.test(k)) { otherFields.push({ label: "Stav", val: v, key }); continue; }
-      if (/dÃ¡tum|datum/.test(k)) { otherFields.push({ label: key, val: v, key }); continue; }
+      if (/dátum|datum/.test(k)) { otherFields.push({ label: key, val: v, key }); continue; }
       otherFields.push({ label: key, val: v, key });
     }
     return { locFields, paramFields, otherFields };
@@ -602,22 +602,22 @@ function ParcelDetail({ info, onClear }: { info: ParcelInfo; onClear: () => void
   const { locFields, paramFields, otherFields } = categorizeFields();
   const hasParams = info.vymera || paramFields.length > 0;
 
-  // Resolve KU name â€” raw attributes may have the name under a different key
+  // Resolve KU name — raw attributes may have the name under a different key
   let kuName = info.ku;
   if (/^\d+$/.test(kuName)) {
     for (const [key, val] of Object.entries(a)) {
       const k = key.toLowerCase();
-      if (/nÃ¡zov katastrÃ¡lneho|nÃ¡zov_ku|nazov_ku|katastrÃ¡lne Ãºzemie/.test(k)) {
+      if (/názov katastrálneho|názov_ku|nazov_ku|katastrálne územie/.test(k)) {
         kuName = String(val);
         break;
       }
     }
   }
-  const kuCode = locFields.find((f) => f.label === "KÃ³d k.Ãº.")?.val;
+  const kuCode = locFields.find((f) => f.label === "Kód k.ú.")?.val;
   const obec = locFields.find((f) => f.label === "Obec")?.val;
 
   const subtitle = [
-    kuName ? `k.Ãº. ${kuName}${kuCode ? ` (${kuCode})` : ""}` : null,
+    kuName ? `k.ú. ${kuName}${kuCode ? ` (${kuCode})` : ""}` : null,
     obec ? `obec ${obec}` : null,
   ]
     .filter(Boolean)
@@ -625,13 +625,13 @@ function ParcelDetail({ info, onClear }: { info: ParcelInfo; onClear: () => void
 
   return (
     <div className="flex h-full flex-col">
-      {/* Map snapshot header â€” flush, no padding, X button overlaid */}
+      {/* Map snapshot header — flush, no padding, X button overlaid */}
       <div className="relative shrink-0">
         <MapSnapshot lat={info.lat} lng={info.lng} />
         <button
           onClick={onClear}
           className="absolute right-2 top-2 z-10 rounded-md border border-border bg-background/90 p-1.5 text-muted-foreground hover:bg-background hover:text-foreground"
-          aria-label="ZatvoriÅ¥"
+          aria-label="Zatvoriť"
         >
           <X className="h-4 w-4" />
         </button>
@@ -646,8 +646,8 @@ function ParcelDetail({ info, onClear }: { info: ParcelInfo; onClear: () => void
         {info.lv && (
           <div className="mt-2 flex items-center gap-2 text-[12px] text-muted-foreground">
             <span>LV {info.lv}</span>
-            {info.vymera && <><span className="text-border">Â·</span><span>{info.vymera} mÂ²</span></>}
-            {info.druh && <><span className="text-border">Â·</span><span>{info.druh}</span></>}
+            {info.vymera && <><span className="text-border">·</span><span>{info.vymera} m²</span></>}
+            {info.druh && <><span className="text-border">·</span><span>{info.druh}</span></>}
           </div>
         )}
       </div>
@@ -657,44 +657,44 @@ function ParcelDetail({ info, onClear }: { info: ParcelInfo; onClear: () => void
 
       {/* Scrollable info sections */}
       <div className="flex-1 overflow-y-auto pt-3">
-        {(kuName || locFields.some((f) => f.label !== "KÃ³d k.Ãº." && f.label !== "Obec")) && (
+        {lvData.loading && (
+          <div className="px-4 pb-4">
+            <div className="mb-2 flex items-center gap-2">
+              <div className="h-3 w-0.5 shrink-0 rounded-full bg-muted-foreground/20" />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Vlastníci</span>
+            </div>
+            <div className="py-2 text-[12px] text-muted-foreground">Načítavam údaje o vlastníkoch…</div>
+          </div>
+        )}
+
+        {!lvData.loading && lvData.owners.length > 0 && (
+          <Section title="Vlastníci">
+            {lvData.owners.map((o, i) => (
+              <Row key={i} label={o.meno} value={o.adresa ? `${o.adresa}${o.podiel ? ` · ${o.podiel}` : ""}` : o.podiel || "—"} />
+            ))}
+          </Section>
+        )}
+
+        {(kuName || locFields.some((f) => f.label !== "Kód k.ú." && f.label !== "Obec")) && (
           <Section title="Poloha">
-            {kuName && <Row label="KatastrÃ¡lne Ãºzemie" value={kuName} />}
+            {kuName && <Row label="Katastrálne územie" value={kuName} />}
             {locFields
-              .filter((f) => f.label !== "KÃ³d k.Ãº." && f.label !== "Obec")
+              .filter((f) => f.label !== "Kód k.ú." && f.label !== "Obec")
               .map((f) => <Row key={f.key} label={f.label} value={f.val} />)}
-            <Row label="SÃºradnice" value={`${info.lat.toFixed(5)}Â° N, ${info.lng.toFixed(5)}Â° E`} mono />
+            <Row label="Súradnice" value={`${info.lat.toFixed(5)}° N, ${info.lng.toFixed(5)}° E`} mono />
           </Section>
         )}
 
         {hasParams && (
           <Section title="Parametre">
-            {info.vymera && <Row label="VÃ½mera" value={`${info.vymera} mÂ²`} />}
+            {info.vymera && <Row label="Výmera" value={`${info.vymera} m²`} />}
             {paramFields.map((f) => <Row key={f.key} label={f.label} value={f.val} />)}
           </Section>
         )}
 
         {otherFields.length > 0 && (
-          <Section title="ÄŽalÅ¡ie Ãºdaje">
+          <Section title="Ďalšie údaje">
             {otherFields.map((f) => <Row key={f.key} label={f.label} value={f.val} />)}
-          </Section>
-        )}
-
-        {lvData.loading && (
-          <div className="px-4 pb-4">
-            <div className="mb-2 flex items-center gap-2">
-              <div className="h-3 w-0.5 shrink-0 rounded-full bg-muted-foreground/20" />
-              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">VlastnÃ­ci</span>
-            </div>
-            <div className="py-2 text-[12px] text-muted-foreground">NaÄÃ­tavam Ãºdaje o vlastnÃ­kochâ€¦</div>
-          </div>
-        )}
-
-        {!lvData.loading && lvData.owners.length > 0 && (
-          <Section title="VlastnÃ­ci">
-            {lvData.owners.map((o, i) => (
-              <Row key={i} label={o.meno} value={o.adresa ? `${o.adresa}${o.podiel ? ` Â· ${o.podiel}` : ""}` : o.podiel || "â€”"} />
-            ))}
           </Section>
         )}
       </div>
@@ -708,7 +708,7 @@ function ParcelDetail({ info, onClear }: { info: ParcelInfo; onClear: () => void
           className="flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-2.5 text-[13px] font-medium text-primary-foreground hover:opacity-90"
         >
           <ExternalLink className="h-4 w-4" />
-          ZobraziÅ¥ v ZBGIS
+          Zobraziť v ZBGIS
         </a>
       </div>
     </div>
@@ -810,7 +810,7 @@ function MapSkeleton() {
     <div className="absolute inset-0 grid place-items-center bg-muted">
       <div className="flex flex-col items-center gap-3 text-muted-foreground">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
-        <div className="font-mono text-[11px] uppercase tracking-wider">NaÄÃ­tavam mapu</div>
+        <div className="font-mono text-[11px] uppercase tracking-wider">Načítavam mapu</div>
       </div>
     </div>
   );

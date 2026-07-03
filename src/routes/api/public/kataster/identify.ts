@@ -48,7 +48,8 @@ export const Route = createFileRoute("/api/public/kataster/identify")({
             const res = await tryUpstream(`${base}?${qs}`, ctrl.signal);
             clearTimeout(id);
             if (res) {
-              const body = await res.text();
+              const buf = await res.arrayBuffer();
+              const body = new TextDecoder("utf-8").decode(buf);
               return new Response(body, {
                 status: res.status,
                 headers: {
