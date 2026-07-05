@@ -16,7 +16,7 @@ import {
   LogIn,
   ExternalLink,
 } from "lucide-react";
-import logo from "@/assets/geo2-logo.png.asset.json";
+import logo from "@/assets/logo-removebg-preview.png";
 import type { MapMarker, MapViewHandle, ParcelInfo } from "@/components/MapView";
 import { getSession, type Session } from "@/lib/auth";
 
@@ -77,6 +77,8 @@ function Portal() {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [marker, setMarker] = useState<MapMarker | null>(null);
   const [selectedParcel, setSelectedParcel] = useState<ParcelInfo | null>(null);
+  const selectedParcelRef = useRef(selectedParcel);
+  selectedParcelRef.current = selectedParcel;
 
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<Hit[] | null>(null);
@@ -84,6 +86,17 @@ function Portal() {
   const [showHits, setShowHits] = useState(false);
   const debounceRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const searchWrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (searchWrapRef.current && !searchWrapRef.current.contains(e.target as Node)) {
+        setShowHits(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const [session, setSession] = useState<Session | null>(null);
 
@@ -132,8 +145,9 @@ function Portal() {
     const parcelPromise = looksLikeParcel
       ? (async () => {
           try {
+            const ku = selectedParcelRef.current?.ku || "";
             const res = await fetch(
-              `/api/public/kataster/search?q=${encodeURIComponent(q)}`,
+              `/api/public/kataster/search?q=${encodeURIComponent(q)}${ku ? `&ku=${encodeURIComponent(ku)}` : ""}`,
               { signal: ctrl.signal },
             );
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -159,7 +173,7 @@ function Portal() {
     try {
       const [places, parcels] = await Promise.all([placesPromise, parcelPromise]);
       if (ctrl.signal.aborted) return;
-      setHits([...parcels, ...places]);
+      setHits(parcels.length > 0 ? parcels : [...parcels, ...places]);
       setShowHits(true);
     } finally {
       if (!ctrl.signal.aborted) setSearching(false);
@@ -245,7 +259,7 @@ function Portal() {
           href="https://geobukovy.sk"
           className="flex h-full shrink-0 items-center gap-2.5 border-r border-border px-4"
         >
-          <img src={logo.url} alt="GEO2" className="h-9 w-9 object-contain" />
+          <img src={logo} alt="GEO2" className="h-9 w-9 object-contain" />
           <div className="leading-tight">
             <div className="font-display text-[15px] font-semibold tracking-tight">GeoBukový</div>
             <div className="text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
@@ -256,7 +270,7 @@ function Portal() {
 
         {/* Search */}
         <div className="flex flex-1 items-center justify-center px-4">
-          <div className="relative w-full max-w-[560px]">
+          <div ref={searchWrapRef} className="relative w-full max-w-[560px]">
             {searching ? (
               <Loader2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
             ) : (
@@ -412,18 +426,6 @@ function Portal() {
 
           {showLayers && (
             <div className="absolute right-0 top-full mt-1.5 w-[260px] origin-top-right rounded-lg border border-border bg-surface">
-              <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  Mapové vrstvy
-                </span>
-                <button
-                  onClick={() => setShowLayers(false)}
-                  className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-
               <div className="border-b border-border px-3 py-2.5">
                 <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                   Podkladová mapa

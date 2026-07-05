@@ -1,4 +1,4 @@
-import { chromium, BrowserContext, Browser } from "playwright";
+import { chromium, BrowserContext, Browser, Page } from "playwright";
 import { existsSync, mkdirSync } from "fs";
 import { join } from "path";
 
@@ -9,6 +9,7 @@ const CDP_URL = process.env.CDP_URL || "http://localhost:9222";
 
 let ctx: BrowserContext | null = null;
 let cdpBrowser: Browser | null = null;
+let searchPage: Page | null = null;
 
 export async function getContext(): Promise<BrowserContext> {
   if (ctx) return ctx;
@@ -66,10 +67,31 @@ export async function getPage() {
   return await context.newPage();
 }
 
+export async function getSearchPage(): Promise<Page> {
+  if (searchPage && !searchPage.isClosed()) {
+    return searchPage;
+  }
+  const context = await getContext();
+  searchPage = await context.newPage();
+  console.log("[browser] Created persistent search page");
+  return searchPage;
+}
+
+export async function ensureSearchPagePortal(page: Page): Promise<void> {
+  const url = page.url();
+  if (!url || url === "about:blank") {
+    await page.goto("https://kataster.skgeodesy.sk/Portal45/sk/Home/Index", {
+      waitUntil: "domcontentloaded", timeout: 20000,
+    }).catch(() => {});
+  }
+}
+
 export async function closeBrowser() {
   if (cdpBrowser) await cdpBrowser.close().catch(() => {});
+  if (searchPage && !searchPage.isClosed()) await searchPage.close().catch(() => {});
   if (ctx) await ctx.close().catch(() => {});
   cdpBrowser = null;
+  searchPage = null;
   ctx = null;
 }
 

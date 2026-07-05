@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { login } from "@/lib/auth";
-import logo from "@/assets/geo2-logo.png.asset.json";
+import logo from "@/assets/logo-removebg-preview.png";
 import { ArrowLeft, Lock, User } from "lucide-react";
 
 export const Route = createFileRoute("/login")({
@@ -43,7 +43,7 @@ function LoginPage() {
 
       <div className="w-full max-w-[380px] rounded-xl border border-border bg-surface p-7 shadow-sm">
         <div className="mb-6 flex items-center gap-3">
-          <img src={logo.url} alt="" className="h-10 w-10 object-contain" />
+          <img src={logo} alt="" className="h-10 w-10 object-contain" />
           <div className="leading-tight">
             <div className="font-display text-[15px] font-semibold tracking-tight">GeoBukový</div>
             <div className="text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">

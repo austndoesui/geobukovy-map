@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-// Server-side parcel search via ÚGKK MapServer /find and /query (bypasses CORS)
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
@@ -8,11 +7,15 @@ const CORS = {
   "Access-Control-Max-Age": "86400",
 };
 
-const BASE = "https://kataster.skgeodesy.sk/eskn/rest/services/NR/kn_wms_norm/MapServer";
+const UA = "GeodetApp/1.0 (parcel-search)";
+const PLAYWRIGHT_URL = process.env.PLAYWRIGHT_SERVICE_URL || "http://localhost:3001";
+const WFS_URL = "https://inspirews.skgeodesy.sk/geoserver/cp/ows";
 
-// Layer indices in the ÚGKK MapServer. Parcely C-KN is around layer 3, E-KN around layer 8.
-// We query both and merge.
-const PARCEL_LAYERS = "3,8";
+const WMS_UPSTREAMS = [
+  "https://kataster.skgeodesy.sk/eskn/services/NR/kn_wms_norm/MapServer/WMSServer",
+  "https://kataster.skgeodesy.sk/eskn/services/BA/kn_wms_norm/MapServer/WMSServer",
+  "https://kataster.skgeodesy.sk/eskn/services/KE/kn_wms_norm/MapServer/WMSServer",
+];
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -21,32 +24,239 @@ function json(body: unknown, status = 200) {
   });
 }
 
-// Parse "1155/14" or "1155" -> { main: "1155", sub: "14" | null }
+interface SearchItem {
+  lat: number;
+  lng: number;
+  label: string;
+  sublabel: string;
+  parcelNo: string;
+  ku: string;
+  kuCode: string;
+  lvNumber: string;
+  layerName?: string;
+  source: "nominatim" | "wms" | "playwright" | "wfs";
+  attributes?: Record<string, string>;
+}
+
+const kuNameCache: Record<string, string> = {};
+
+async function resolveKuName(kuCode: string): Promise<string> {
+  if (kuNameCache[kuCode]) return kuNameCache[kuCode];
+  try {
+    const cql = `nationalCadastalZoningReference='${kuCode}'`;
+    const url = `${WFS_URL}?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&typeNames=cp:CP.CadastralZoning&count=1&outputFormat=application/json&cql_filter=${encodeURIComponent(cql)}`;
+    const res = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return kuCode;
+    const data = (await res.json()) as { features?: Array<{ properties?: { label?: string } }> };
+    const name = data.features?.[0]?.properties?.label;
+    if (name) {
+      kuNameCache[kuCode] = name;
+      return name;
+    }
+  } catch {
+    // fall through
+  }
+  return kuCode;
+}
+
+async function wfsToItems(data: { features?: Array<{ properties?: { label?: string; nationalCadastralReference?: string; referencePoint?: { coordinates?: [number, number] }; areaValue?: { value?: number }; inspireId?: { localId?: string } } }> }): Promise<SearchItem[]> {
+  if (!data.features?.length) return [];
+  const kuCodes = new Set<string>();
+  for (const f of data.features) {
+    const kc = (f.properties?.nationalCadastralReference || "").split("_")[0] || "";
+    if (kc) kuCodes.add(kc);
+  }
+  await Promise.all([...kuCodes].map((code) => resolveKuName(code)));
+  const results: SearchItem[] = [];
+  const seen = new Set<string>();
+  for (const f of data.features) {
+    const props = f.properties;
+    if (!props?.label) continue;
+    const kc = (props.nationalCadastralReference || "").split("_")[0] || "";
+    const kn = kuNameCache[kc] || kc;
+    const coord = props.referencePoint?.coordinates || [0, 0];
+    const av = props.areaValue?.value;
+    const key = `${kc}_${props.label}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push({
+      lat: coord[1], lng: coord[0],
+      label: `Parcela ${props.label} · k.ú. ${kn}`,
+      sublabel: av ? `${av} m²` : kc,
+      parcelNo: props.label, ku: kn, kuCode: kc, lvNumber: "",
+      layerName: "CP.CadastralParcel", source: "wfs",
+      attributes: {
+        "Číslo parcely": props.label,
+        "Názov katastrálneho územia": kn,
+        "Kód katastrálneho územia": kc,
+        "Výmera": av ? String(av) : "",
+        "INSPIRE ID": props.inspireId?.localId || "",
+      },
+    });
+  }
+  return results;
+}
+
+async function wfsSearch(parcelNo: string): Promise<SearchItem[]> {
+  const cql = `label='${parcelNo.replace(/'/g, "''")}'`;
+  const url = `${WFS_URL}?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&typeNames=cp:CP.CadastralParcel&count=15&outputFormat=application/json&cql_filter=${encodeURIComponent(cql)}`;
+  try {
+    const res = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(15000) });
+    if (!res.ok) return [];
+    return wfsToItems(await res.json());
+  } catch {
+    return [];
+  }
+}
+
+async function wfsSearchFlex(parcelMain: string, parcelSub: string | null): Promise<SearchItem[]> {
+  const exact = parcelSub ? `${parcelMain}/${parcelSub}` : parcelMain;
+  const [exactResults, likeResults] = await Promise.all([
+    wfsSearch(exact),
+    !parcelSub
+      ? (async () => {
+          const cql = `label LIKE '${parcelMain.replace(/'/g, "''")}/%'`;
+          const url = `${WFS_URL}?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&typeNames=cp:CP.CadastralParcel&count=10&outputFormat=application/json&cql_filter=${encodeURIComponent(cql)}`;
+          try {
+            const res = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(15000) });
+            if (!res.ok) return [] as SearchItem[];
+            return wfsToItems(await res.json());
+          } catch { return [] as SearchItem[]; }
+        })()
+      : (Promise.resolve([] as SearchItem[])),
+  ]);
+  const merged = [...exactResults];
+  const seen = new Set(merged.map((r) => `${r.kuCode}_${r.parcelNo}`));
+  for (const r of likeResults) {
+    const key = `${r.kuCode}_${r.parcelNo}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(r);
+  }
+  return merged;
+}
+
+async function nominatimSearch(q: string): Promise<Array<{ lat: number; lng: number; displayName: string; osmType: string }>> {
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=8&countrycodes=sk`;
+  try {
+    const res = await fetch(url, { headers: { "User-Agent": UA } });
+    if (!res.ok) return [];
+    const data = (await res.json()) as Array<{ lat: string; lon: string; display_name: string; osm_type: string }>;
+    return data.map((d) => ({
+      lat: parseFloat(d.lat),
+      lng: parseFloat(d.lon),
+      displayName: d.display_name,
+      osmType: d.osm_type,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function wmsIdentify(lat: number, lng: number): Promise<SearchItem | null> {
+  const buf = 0.001;
+  const bbox = `${lat - buf},${lng - buf},${lat + buf},${lng + buf}`;
+  const qs =
+    `SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo` +
+    `&LAYERS=5,8&QUERY_LAYERS=5,8&I=250&J=250&WIDTH=501&HEIGHT=501` +
+    `&BBOX=${bbox}&CRS=EPSG:4326&INFO_FORMAT=application%2Fgeo%2Bjson&FEATURE_COUNT=5`;
+
+  for (const base of WMS_UPSTREAMS) {
+    try {
+      const res = await fetch(`${base}?${qs}`, {
+        signal: AbortSignal.timeout(8000),
+        headers: { "User-Agent": UA, Referer: "https://kataster.skgeodesy.sk/" },
+      });
+      if (!res.ok) continue;
+      const data = (await res.json()) as { features?: Array<{ properties: Record<string, unknown>; layerName?: string }> };
+      const feature = data?.features?.find((f) => /parcela.*c/i.test(f.layerName || ""));
+      if (feature) {
+        const p = feature.properties;
+        const keys = Object.keys(p);
+        const findKey = (matcher: (k: string) => boolean): string => {
+          const k = keys.find(matcher);
+          return k && p[k] != null && String(p[k]).trim() !== "" ? String(p[k]) : "";
+        };
+        const parcelNo = findKey((k) => /parcely/i.test(k) || /parcelne/i.test(k) || /parcela/i.test(k));
+        const kuName = findKey((k) => /názov.*katastr|katastr.*názov|nazov.*katastr|katastr.*nazov/i.test(k));
+        const kuCode = findKey((k) => /kód.*katastr|kod.*katastr/i.test(k) || /k\.ú\.?\s*kód/i.test(k));
+        const lvNumber = findKey((k) => /list.*vlastn|cislo.*list/i.test(k) || /číslo.*list/i.test(k));
+        const areaVal = findKey((k) => /vymera/i.test(k) || /výmera/i.test(k));
+        return {
+          lat, lng,
+          label: `Parcela ${parcelNo} · k.ú. ${kuName}`,
+          sublabel: `LV ${lvNumber}`,
+          parcelNo, ku: kuName, kuCode, lvNumber,
+          layerName: feature.layerName,
+          source: "wms" as const,
+          attributes: Object.fromEntries(
+            keys.map((k) => [k, String(p[k] ?? "")])
+          ),
+        };
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+async function overpassFindHouseNumber(
+  centerLat: number, centerLng: number,
+  number: string
+): Promise<{ lat: number; lng: number } | null> {
+  const bbox = `${centerLat - 0.04},${centerLng - 0.04},${centerLat + 0.04},${centerLng + 0.04}`;
+  const q = `[out:json];(node(${bbox})[~"addr:housenumber"~"${number.replace(/"/g, '\\"')}"];way(${bbox})[~"addr:housenumber"~"${number.replace(/"/g, '\\"')}"];);out center 1;`;
+  try {
+    const res = await fetch("https://overpass-api.de/api/interpreter", {
+      method: "POST",
+      headers: { "User-Agent": UA, "Content-Type": "application/x-www-form-urlencoded" },
+      body: `data=${encodeURIComponent(q)}`,
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { elements?: Array<{ lat?: number; lon?: number; center?: { lat: number; lon: number } }> };
+    const el = data.elements?.[0];
+    if (!el) return null;
+    const lat = el.lat ?? el.center?.lat;
+    const lng = el.lon ?? el.center?.lon;
+    if (lat != null && lng != null) return { lat, lng };
+  } catch { /* ignore */ }
+  return null;
+}
+
 function parseParcelNumber(s: string): { main: string; sub: string | null } | null {
-  const m = s.trim().match(/^(\d+)(?:\s*[/-]\s*(\d+))?$/);
+  const m = s.trim().match(/^(\d{1,6})(?:\s*[/-]\s*(\d{1,6}))?$/);
   if (!m) return null;
   return { main: m[1], sub: m[2] ?? null };
 }
 
-// Extract "obec parcela" — user types e.g. "Oravská Polhora 1155/14" or "1155/14 oravská polhora"
-function splitQuery(q: string): { municipality: string | null; parcel: { main: string; sub: string | null } | null } {
-  const parts = q.trim().split(/\s+/);
-  // find a token that looks like a parcel number
-  let parcelIdx = -1;
-  let parcel: { main: string; sub: string | null } | null = null;
-  for (let i = 0; i < parts.length; i++) {
-    const p = parseParcelNumber(parts[i]);
-    if (p) {
-      parcel = p;
-      parcelIdx = i;
-      break;
+function isParcelOnlyQuery(q: string): boolean {
+  return /^[\d\s/-]{1,15}$/.test(q.trim());
+}
+
+function extractParcelNumbers(q: string): string[] {
+  const nums: string[] = [];
+  const compound = q.match(/\b(\d{1,6})\s*[/-]\s*(\d{1,6})\b/);
+  if (compound) nums.push(`${compound[1]}/${compound[2]}`);
+  const simples = q.match(/\b(\d{1,6})\b/g);
+  if (simples) {
+    for (const s of simples) {
+      const val = s.replace(/^0+/, "") || s;
+      if (!nums.some((n) => n.split("/")[0] === val)) nums.push(val);
     }
   }
-  const municipality = parts
-    .filter((_, i) => i !== parcelIdx)
-    .join(" ")
-    .trim() || null;
-  return { municipality, parcel };
+  return nums;
+}
+
+function formatAddress(displayName: string): { label: string; sublabel: string } {
+  const idx = displayName.indexOf(", okres ");
+  if (idx === -1) return { label: displayName, sublabel: "" };
+  const okresEnd = displayName.indexOf(",", idx + 8);
+  return {
+    label: displayName.slice(0, idx),
+    sublabel: okresEnd === -1 ? displayName.slice(idx + 2) : displayName.slice(idx + 2, okresEnd),
+  };
 }
 
 export const Route = createFileRoute("/api/public/kataster/search")({
@@ -59,128 +269,147 @@ export const Route = createFileRoute("/api/public/kataster/search")({
           const q = (url.searchParams.get("q") || "").trim();
           if (q.length < 2) return json({ results: [] });
 
-          const { municipality, parcel } = splitQuery(q);
+          const results: SearchItem[] = [];
+          const seen = new Set<string>();
 
-          // If user typed just a parcel number without municipality → use /find (slower, whole SR)
-          // Otherwise use /query with WHERE on parcel number + LIKE on k.ú. name
-          const results: Array<{
-            layer: number;
-            layerName: string;
-            attributes: Record<string, unknown>;
-            geometry: unknown;
-            lat: number;
-            lng: number;
-            label: string;
-            sublabel: string;
-          }> = [];
-
-          const layers = PARCEL_LAYERS.split(",").map(Number);
-
-          for (const layer of layers) {
-            let upstream: string;
+          // Strategy 1: Pure parcel number → INSPIRE WFS
+          if (isParcelOnlyQuery(q)) {
+            const parcel = parseParcelNumber(q);
             if (parcel) {
-              // Build a tolerant WHERE across common field name variants
-              const parcelValue = parcel.sub ? `${parcel.main}/${parcel.sub}` : parcel.main;
-              const parcelValueAlt = parcel.sub ? `${parcel.main}-${parcel.sub}` : parcel.main;
-              const parcelFields = ["CISLO_PARCELY", "PARCELNE_CISLO", "CISLOPARCELY"];
-              const kuFields = ["NAZOV_KU", "KATASTRALNE_UZEMIE", "NAZOVKU"];
-              const parcelClause = parcelFields
-                .map((f) => `${f}='${parcelValue}' OR ${f}='${parcelValueAlt}'`)
-                .join(" OR ");
-              const kuClause =
-                municipality
-                  ? " AND (" +
-                    kuFields
-                      .map((f) => `UPPER(${f}) LIKE UPPER('%${municipality.replace(/'/g, "''")}%')`)
-                      .join(" OR ") +
-                    ")"
-                  : "";
-              const where = `(${parcelClause})${kuClause}`;
-              upstream =
-                `${BASE}/${layer}/query?f=json&where=${encodeURIComponent(where)}` +
-                `&outFields=*&returnGeometry=true&outSR=4326&resultRecordCount=25`;
-            } else {
-              // Fallback: /find on layer for text
-              upstream =
-                `${BASE}/find?f=json&contains=true&returnGeometry=true` +
-                `&sr=4326&layers=${layer}&searchText=${encodeURIComponent(q)}`;
+              const parcelVal = parcel.sub ? `${parcel.main}/${parcel.sub}` : parcel.main;
+              const wfsResults = await wfsSearch(parcelVal);
+              for (const r of wfsResults) {
+                const key = `${r.kuCode}_${r.parcelNo}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                results.push(r);
+              }
+            }
+          }
+
+          // Strategy 2: Mixed text+number queries → run Nominatim+WMS, Overpass, and WFS in parallel
+          if (results.length === 0 && !isParcelOnlyQuery(q)) {
+            const extracted = extractParcelNumbers(q);
+            const firstNumber = extracted[0] || "";
+
+            const geoResults = await nominatimSearch(q);
+
+            const [overpassCoords, wfsResults] = await Promise.all([
+              (geoResults.length > 0 && firstNumber
+                ? overpassFindHouseNumber(geoResults[0].lat, geoResults[0].lng, firstNumber)
+                : Promise.resolve(null)),
+              (async () => {
+                for (const parcelVal of extracted) {
+                  const parsed = parseParcelNumber(parcelVal);
+                  if (parsed) {
+                    const hits = await wfsSearchFlex(parsed.main, parsed.sub);
+                    if (hits.length > 0) return hits;
+                  }
+                }
+                return [] as SearchItem[];
+              })(),
+            ]);
+
+            // Overpass found a precise address → WMS identify at exact coords
+            if (overpassCoords) {
+              const key = `${overpassCoords.lat.toFixed(4)},${overpassCoords.lng.toFixed(4)}`;
+              if (!seen.has(key)) {
+                seen.add(key);
+                const wms = await wmsIdentify(overpassCoords.lat, overpassCoords.lng);
+                if (wms) {
+                  const { label, sublabel } = formatAddress(geoResults[0].displayName);
+                  results.push({ ...wms, label, sublabel, source: "wms" });
+                }
+              }
             }
 
-            const res = await fetch(upstream, {
-              headers: {
-                Accept: "application/json",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                Referer: "https://kataster.skgeodesy.sk/",
-              },
-            });
-            if (!res.ok) continue;
-            const data = (await res.json()) as {
-              features?: Array<{ attributes: Record<string, unknown>; geometry: unknown }>;
-              results?: Array<{
-                layerId: number;
-                layerName: string;
-                attributes: Record<string, unknown>;
-                geometry: unknown;
-              }>;
-            };
+            for (const geo of geoResults) {
+              if (seen.has(`${geo.lat.toFixed(4)},${geo.lng.toFixed(4)}`)) continue;
+              seen.add(`${geo.lat.toFixed(4)},${geo.lng.toFixed(4)}`);
+              const wms = await wmsIdentify(geo.lat, geo.lng);
+              if (wms) {
+                const { label, sublabel } = formatAddress(geo.displayName);
+                results.push({ ...wms, label, sublabel, source: "nominatim" });
+              } else {
+                const { label, sublabel } = formatAddress(geo.displayName);
+                results.push({
+                  lat: geo.lat, lng: geo.lng,
+                  label,
+                  sublabel,
+                  parcelNo: "", ku: "", kuCode: "", lvNumber: "", source: "nominatim",
+                });
+              }
+            }
 
-            const items = parcel
-              ? (data.features || []).map((f) => ({
-                  layerId: layer,
-                  layerName: layer === 3 ? "Parcela C-KN" : layer === 8 ? "Parcela E-KN" : `Parcela ${layer}`,
-                  attributes: f.attributes,
-                  geometry: f.geometry,
-                }))
-              : (data.results || []).map((r) => ({
-                  layerId: r.layerId,
-                  layerName: r.layerName,
-                  attributes: r.attributes,
-                  geometry: r.geometry,
-                }));
+            for (const r of wfsResults) {
+              const key = `${r.kuCode}_${r.parcelNo}`;
+              if (seen.has(key)) continue;
+              seen.add(key);
+              results.push(r);
+            }
+          }
 
-            for (const it of items.slice(0, 15)) {
-              const a = it.attributes;
-              const pick = (...names: string[]) => {
-                for (const n of names) {
-                  for (const k of Object.keys(a)) {
-                    if (k.toLowerCase() === n.toLowerCase() && a[k] != null && String(a[k]).trim() !== "") {
-                      return String(a[k]);
+          // Strategy 3: Pure address (no numbers) → Nominatim + WMS identify only
+          if (results.length === 0 && !isParcelOnlyQuery(q) && extractParcelNumbers(q).length === 0) {
+            const geoResults = await nominatimSearch(q);
+            for (const geo of geoResults) {
+              if (seen.has(`${geo.lat.toFixed(4)},${geo.lng.toFixed(4)}`)) continue;
+              seen.add(`${geo.lat.toFixed(4)},${geo.lng.toFixed(4)}`);
+
+              const wms = await wmsIdentify(geo.lat, geo.lng);
+              if (wms) {
+                const { label, sublabel } = formatAddress(geo.displayName);
+                results.push({ ...wms, label, sublabel, source: "nominatim" });
+              } else {
+                const { label, sublabel } = formatAddress(geo.displayName);
+                results.push({
+                  lat: geo.lat, lng: geo.lng,
+                  label,
+                  sublabel,
+                  parcelNo: "", ku: "", kuCode: "", lvNumber: "", source: "nominatim",
+                });
+              }
+            }
+          }
+
+          // Strategy 4: Parcel-only but WFS failed → Playwright fallback
+          if (results.length === 0 && isParcelOnlyQuery(q)) {
+            const parcel = parseParcelNumber(q);
+            if (parcel) {
+              const parcelVal = parcel.sub ? `${parcel.main}/${parcel.sub}` : parcel.main;
+              try {
+                const pwRes = await fetch(PLAYWRIGHT_URL + "/api/search", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ parcelNo: parcelVal }),
+                  signal: AbortSignal.timeout(25000),
+                });
+                if (pwRes.ok) {
+                  const pwData = (await pwRes.json()) as {
+                    results?: Array<{ lvNumber: string; kuCode: string; kuName: string; parcelNo: string }>;
+                    captchaDetected?: boolean;
+                  };
+                  if (pwData.captchaDetected) {
+                    results.push({
+                      lat: 0, lng: 0, label: "Captcha potrebná — otvorte VNC a vyriešte captchu",
+                      sublabel: "Portál ESKN vyžaduje overenie",
+                      parcelNo: "", ku: "", kuCode: "", lvNumber: "", source: "playwright",
+                    });
+                  } else if (pwData.results?.length) {
+                    for (const r of pwData.results) {
+                      results.push({
+                        lat: 0, lng: 0,
+                        label: `LV ${r.lvNumber} · ${r.kuName} (${r.kuCode})`,
+                        sublabel: r.parcelNo ? `Parcela ${r.parcelNo}` : "",
+                        parcelNo: r.parcelNo, ku: r.kuName, kuCode: r.kuCode, lvNumber: r.lvNumber,
+                        source: "playwright",
+                      });
                     }
                   }
                 }
-                return "";
-              };
-              const cislo = pick("CISLO_PARCELY", "PARCELNE_CISLO", "CISLOPARCELY") || "?";
-              const ku = pick("NAZOV_KU", "KATASTRALNE_UZEMIE", "NAZOVKU") || "";
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const geom: any = it.geometry;
-              let lat = 0;
-              let lng = 0;
-              if (geom?.rings?.length) {
-                // centroid-ish: average of first ring
-                const ring: [number, number][] = geom.rings[0];
-                let sx = 0;
-                let sy = 0;
-                for (const [x, y] of ring) {
-                  sx += x;
-                  sy += y;
-                }
-                lng = sx / ring.length;
-                lat = sy / ring.length;
-              } else if (geom?.x != null && geom?.y != null) {
-                lng = geom.x;
-                lat = geom.y;
+              } catch {
+                // Playwright unavailable
               }
-              results.push({
-                layer: it.layerId,
-                layerName: it.layerName,
-                attributes: a,
-                geometry: geom,
-                lat,
-                lng,
-                label: `Parcela ${cislo}${ku ? " · k.ú. " + ku : ""}`,
-                sublabel: it.layerName,
-              });
             }
           }
 

@@ -1,8 +1,9 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { getPage, closeBrowser } from "./browser.js";
+import { getPage, getSearchPage, closeBrowser } from "./browser.js";
 import { extractOwners } from "./extract.js";
+import { searchFolios } from "./search.js";
 
 const app = new Hono();
 app.use("/*", cors());
@@ -26,6 +27,23 @@ app.post("/api/owners", async (c) => {
     return c.json({ error: "extraction_failed", detail: err?.message || String(err) }, 502);
   } finally {
     if (page) await page.close().catch(() => {});
+  }
+});
+
+app.post("/api/search", async (c) => {
+  const body = await c.req.json();
+  const { kuCode, kuName, parcelNo, lvNo } = body;
+
+  try {
+    const page = await getSearchPage();
+    console.log(`[search] Starting searchFolios with kuCode=${kuCode} lvNo=${lvNo}`);
+    const result = await searchFolios(page, { kuCode, kuName, parcelNo, lvNo });
+    console.log(`[search] Result: ${JSON.stringify(result)}`);
+    return c.json(result);
+  } catch (err: any) {
+    console.log(`[search] Error: ${err?.message || String(err)}`);
+    console.log(`[search] Stack: ${err?.stack || ""}`);
+    return c.json({ error: "search_failed", detail: err?.message || String(err) }, 502);
   }
 });
 

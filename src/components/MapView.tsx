@@ -55,7 +55,7 @@ L.Marker.prototype.options.icon = DEFAULT_ICON;
 // Slovakia bounding box (with small margin so users can pan a bit around the border)
 const SK_BOUNDS = L.latLngBounds(L.latLng(47.4, 16.4), L.latLng(49.9, 22.9));
 
-const BASE_LAYERS: Record<BaseLayer, { url: string; attribution: string; subdomains?: string; maxZoom?: number }> = {
+const BASE_LAYERS: Record<BaseLayer, { url: string; attribution: string; subdomains?: string; maxZoom?: number; maxNativeZoom?: number }> = {
   osm: {
     url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
     attribution: "© OpenStreetMap",
@@ -70,7 +70,8 @@ const BASE_LAYERS: Record<BaseLayer, { url: string; attribution: string; subdoma
     url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
     attribution: "© OpenTopoMap (CC-BY-SA)",
     subdomains: "abc",
-    maxZoom: 17,
+    maxZoom: 19,
+    maxNativeZoom: 17,
   },
 };
 
@@ -193,7 +194,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
     if (!containerRef.current || mapRef.current) return;
     const map = L.map(containerRef.current, {
       center: [48.7, 19.5],
-      zoom: 8,
+      zoom: 10,
       minZoom: 7,
       maxZoom: 19,
       zoomControl: false,
@@ -205,8 +206,6 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
     mapRef.current = map;
 
     L.control.scale({ position: "bottomleft", imperial: false, maxWidth: 160 }).addTo(map);
-
-    map.whenReady(() => map.fitBounds(SK_BOUNDS, { padding: [10, 10] }));
 
     map.on("mousemove", (e) => onCoords?.(e.latlng.lat, e.latlng.lng));
     map.on("click", (e) => identifyParcel(map, e.latlng));
@@ -245,6 +244,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
       attribution: cfg.attribution,
       subdomains: cfg.subdomains ?? "abc",
       maxZoom: cfg.maxZoom ?? 19,
+      maxNativeZoom: cfg.maxNativeZoom,
       noWrap: true,
     });
     layer.addTo(map);

@@ -10,6 +10,7 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
+import favicon from "../assets/logo-removebg-preview.png";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
 function NotFoundComponent() {
@@ -90,6 +91,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/ff297d55-ee34-4d7d-bd0f-705e0deede30/id-preview-2fafd4a2--9ed5cba4-3bb1-49f6-9e3b-6e1e60561ca4.lovable.app-1782883622427.png" },
     ],
     links: [
+      { rel: "icon", href: favicon },
       { rel: "stylesheet", href: appCss },
       { rel: "stylesheet", href: "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css", crossOrigin: "" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },

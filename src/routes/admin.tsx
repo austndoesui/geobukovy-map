@@ -10,7 +10,7 @@ import {
   type Account,
   type Session,
 } from "@/lib/auth";
-import logo from "@/assets/geo2-logo.png.asset.json";
+import logo from "@/assets/logo-removebg-preview.png";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Administrácia — GeoBukový" }] }),
@@ -71,7 +71,7 @@ function AdminPage() {
     <div className="min-h-screen bg-background text-foreground">
       <header className="flex h-14 items-center border-b border-border bg-surface px-4">
         <Link to="/" className="flex items-center gap-2.5">
-          <img src={logo.url} alt="" className="h-8 w-8 object-contain" />
+          <img src={logo} alt="" className="h-8 w-8 object-contain" />
           <div className="leading-tight">
             <div className="font-display text-[14px] font-semibold tracking-tight">GeoBukový</div>
             <div className="text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">

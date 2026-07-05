@@ -48,7 +48,7 @@ echo "2. Click 'Connect'"
 echo "3. You'll see the Chromium browser with the ESKN Portal"
 echo "4. Solve the reCAPTCHA"
 echo "5. The cookies will be saved automatically"
-echo "6. Close this tab when done — cookies persist!"
+echo "6. Close this tab when done ??? cookies persist!"
 echo ""
 
 echo "Starting Node.js app..."
