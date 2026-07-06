@@ -10,6 +10,7 @@ const CORS = {
 const UA = "GeodetApp/1.0 (parcel-search)";
 const PLAYWRIGHT_URL = process.env.PLAYWRIGHT_SERVICE_URL || "http://localhost:3001";
 const WFS_URL = "https://inspirews.skgeodesy.sk/geoserver/cp/ows";
+const ZBGIS_SUGGEST_URL = "https://zbgis.skgeodesy.sk/mapka/api/suggest/kataster";
 
 const WMS_UPSTREAMS = [
   "https://kataster.skgeodesy.sk/eskn/services/NR/kn_wms_norm/MapServer/WMSServer",
@@ -34,7 +35,7 @@ interface SearchItem {
   kuCode: string;
   lvNumber: string;
   layerName?: string;
-  source: "nominatim" | "wms" | "playwright" | "wfs";
+  source: "nominatim" | "wms" | "playwright" | "wfs" | "zbgis";
   attributes?: Record<string, string>;
 }
 
@@ -148,6 +149,42 @@ async function nominatimSearch(q: string): Promise<Array<{ lat: number; lng: num
       displayName: d.display_name,
       osmType: d.osm_type,
     }));
+  } catch {
+    return [];
+  }
+}
+
+const ZBGIS_AREAS: Record<string, string> = {};
+
+async function zbgisSuggest(q: string): Promise<Array<{ text: string; lat: number; lng: number; description: string }>> {
+  try {
+    const res = await fetch(`${ZBGIS_SUGGEST_URL}?q=${encodeURIComponent(q)}`, {
+      headers: { "User-Agent": UA },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as {
+      items?: Array<{
+        data?: {
+          category?: string;
+          text?: string;
+          description?: string;
+          extent?: { coordinates?: [[number, number], [number, number]] };
+        };
+      }>;
+    };
+    if (!data.items?.length) return [];
+    const out: Array<{ text: string; lat: number; lng: number; description: string }> = [];
+    for (const item of data.items) {
+      const d = item.data;
+      if (d?.category !== "adresa") continue;
+      const coords = d.extent?.coordinates;
+      if (!coords?.length) continue;
+      const pair = coords[0];
+      if (!pair || pair.length < 2) continue;
+      out.push({ text: d.text || "", lat: pair[1], lng: pair[0], description: d.description || "" });
+    }
+    return out;
   } catch {
     return [];
   }
@@ -278,46 +315,58 @@ export const Route = createFileRoute("/api/public/kataster/search")({
 
           const results: SearchItem[] = [];
           const seen = new Set<string>();
+          const extracted = extractParcelNumbers(q);
 
-          // Strategy 1: Pure parcel number → INSPIRE WFS
-          if (isParcelOnlyQuery(q)) {
-            const parcel = parseParcelNumber(q);
-            if (parcel) {
-              const parcelVal = parcel.sub ? `${parcel.main}/${parcel.sub}` : parcel.main;
-              const wfsResults = await wfsSearch(parcelVal);
-              for (const r of wfsResults) {
-                const key = `${r.kuCode}_${r.parcelNo}`;
-                if (seen.has(key)) continue;
-                seen.add(key);
-                results.push(r);
+          // Phase 1: Run all data sources in parallel
+          const [zbgisResults, wfsResults, geoResults] = await Promise.all([
+            zbgisSuggest(q),
+            (async () => {
+              for (const parcelVal of extracted) {
+                const parsed = parseParcelNumber(parcelVal);
+                if (parsed) {
+                  const hits = await wfsSearchFlex(parsed.main, parsed.sub);
+                  if (hits.length > 0) return hits;
+                }
+              }
+              return [] as SearchItem[];
+            })(),
+            // Nominatim only needed when ZBGIS has no results
+            Promise.resolve([] as Array<{ lat: number; lng: number; displayName: string; osmType: string }>),
+          ]);
+
+          // Phase 2: ZBGIS address results → WMS identify → parcel + LV
+          // Only ZBGIS results shown here; WFS/Nominatim used only when ZBGIS finds nothing
+          if (zbgisResults.length > 0) {
+            for (const zr of zbgisResults) {
+              const key = `${zr.lat.toFixed(4)},${zr.lng.toFixed(4)}`;
+              if (seen.has(key)) continue;
+              seen.add(key);
+              const wms = await wmsIdentify(zr.lat, zr.lng);
+              const okres = zr.description.startsWith("okres ") ? zr.description : `okres ${zr.description}`;
+              if (wms) {
+                results.push({ ...wms, label: zr.text, sublabel: okres, source: "zbgis" });
+              } else {
+                results.push({
+                  lat: zr.lat, lng: zr.lng,
+                  label: zr.text, sublabel: okres,
+                  parcelNo: "", ku: "", kuCode: "", lvNumber: "", source: "zbgis",
+                });
               }
             }
           }
 
-          // Strategy 2: Mixed text+number queries → run Nominatim+WMS, Overpass, and WFS in parallel
-          if (results.length === 0 && !isParcelOnlyQuery(q)) {
-            const extracted = extractParcelNumbers(q);
+          // Phase 3: No ZBGIS results → fallback to Overpass + Nominatim + WMS
+          if (zbgisResults.length === 0) {
+            let geoData = geoResults;
+            if (geoData.length === 0) {
+              geoData = await nominatimSearch(q);
+            }
+
             const firstNumber = extracted[0] || "";
+            const overpassCoords = geoData.length > 0 && firstNumber
+              ? await overpassFindHouseNumber(geoData[0].lat, geoData[0].lng, firstNumber)
+              : null;
 
-            const geoResults = await nominatimSearch(q);
-
-            const [overpassCoords, wfsResults] = await Promise.all([
-              (geoResults.length > 0 && firstNumber
-                ? overpassFindHouseNumber(geoResults[0].lat, geoResults[0].lng, firstNumber)
-                : Promise.resolve(null)),
-              (async () => {
-                for (const parcelVal of extracted) {
-                  const parsed = parseParcelNumber(parcelVal);
-                  if (parsed) {
-                    const hits = await wfsSearchFlex(parsed.main, parsed.sub);
-                    if (hits.length > 0) return hits;
-                  }
-                }
-                return [] as SearchItem[];
-              })(),
-            ]);
-
-            // Overpass found a precise address → WMS identify at exact coords
             if (overpassCoords) {
               const key = `${overpassCoords.lat.toFixed(4)},${overpassCoords.lng.toFixed(4)}`;
               if (!seen.has(key)) {
@@ -329,16 +378,16 @@ export const Route = createFileRoute("/api/public/kataster/search")({
                     const parts = [overpassCoords.street, overpassCoords.housenumber].join(" ");
                     label = overpassCoords.city ? `${parts}, ${overpassCoords.city}` : parts;
                   } else {
-                    label = formatAddress(geoResults[0].displayName).label;
+                    label = formatAddress(geoData[0].displayName).label;
                   }
-                  const sublabel = formatAddress(geoResults[0].displayName).sublabel;
+                  const sublabel = formatAddress(geoData[0].displayName).sublabel;
                   results.push({ ...wms, label, sublabel, source: "wms" });
                 }
               }
             }
 
             if (!overpassCoords) {
-              for (const geo of geoResults) {
+              for (const geo of geoData) {
                 if (seen.has(`${geo.lat.toFixed(4)},${geo.lng.toFixed(4)}`)) continue;
                 seen.add(`${geo.lat.toFixed(4)},${geo.lng.toFixed(4)}`);
                 const wms = await wmsIdentify(geo.lat, geo.lng);
@@ -369,30 +418,7 @@ export const Route = createFileRoute("/api/public/kataster/search")({
             }
           }
 
-          // Strategy 3: Pure address (no numbers) → Nominatim + WMS identify only
-          if (results.length === 0 && !isParcelOnlyQuery(q) && extractParcelNumbers(q).length === 0) {
-            const geoResults = await nominatimSearch(q);
-            for (const geo of geoResults) {
-              if (seen.has(`${geo.lat.toFixed(4)},${geo.lng.toFixed(4)}`)) continue;
-              seen.add(`${geo.lat.toFixed(4)},${geo.lng.toFixed(4)}`);
-
-              const wms = await wmsIdentify(geo.lat, geo.lng);
-              if (wms) {
-                const { label, sublabel } = formatAddress(geo.displayName);
-                results.push({ ...wms, label, sublabel, source: "nominatim" });
-              } else {
-                const { label, sublabel } = formatAddress(geo.displayName);
-                results.push({
-                  lat: geo.lat, lng: geo.lng,
-                  label,
-                  sublabel,
-                  parcelNo: "", ku: "", kuCode: "", lvNumber: "", source: "nominatim",
-                });
-              }
-            }
-          }
-
-          // Strategy 4: Parcel-only but WFS failed → Playwright fallback
+          // Phase 4: Parcel-only with no results → Playwright fallback
           if (results.length === 0 && isParcelOnlyQuery(q)) {
             const parcel = parseParcelNumber(q);
             if (parcel) {
