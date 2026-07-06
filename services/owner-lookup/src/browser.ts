@@ -83,6 +83,10 @@ export async function ensureSearchPagePortal(page: Page): Promise<void> {
     await page.goto("https://kataster.skgeodesy.sk/Portal45/sk/Home/Index", {
       waitUntil: "domcontentloaded", timeout: 20000,
     }).catch(() => {});
+    // Wait for Portal45 redirects to settle
+    await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
+    const finalUrl = page.url();
+    console.log(`[browser] ensureSearchPagePortal: final URL = ${finalUrl}`);
   }
 }
 

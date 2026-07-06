@@ -20,6 +20,12 @@ dist-ssr
 .wrangler/
 .dev.vars
 
+# Playwright browser profile
+.browser-data/
+
+# Debug screenshots
+portal45-debug.png
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

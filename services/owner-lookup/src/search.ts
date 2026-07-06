@@ -36,31 +36,42 @@ export async function searchFolios(
   return await odataSearch(page, query);
 }
 
-async function xhrFetch(page: Page, url: string): Promise<any> {
-  return await page.evaluate((fetchUrl) => {
-    return new Promise((resolve) => {
-      try {
-        const xhr = new XMLHttpRequest();
-        xhr.open("GET", fetchUrl, true);
-        xhr.withCredentials = true;
-        xhr.onload = () => {
-          if (xhr.status >= 400) {
-            resolve({ _status: xhr.status, _body: (xhr.responseText || "").substring(0, 300) });
-            return;
-          }
+async function xhrFetch(page: Page, url: string, retries = 2): Promise<any> {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await page.evaluate((fetchUrl) => {
+        return new Promise((resolve) => {
           try {
-            resolve(JSON.parse(xhr.responseText));
-          } catch {
-            resolve({ _raw: (xhr.responseText || "").substring(0, 500) });
+            const xhr = new XMLHttpRequest();
+            xhr.open("GET", fetchUrl, true);
+            xhr.withCredentials = true;
+            xhr.onload = () => {
+              if (xhr.status >= 400) {
+                resolve({ _status: xhr.status, _body: (xhr.responseText || "").substring(0, 300) });
+                return;
+              }
+              try {
+                resolve(JSON.parse(xhr.responseText));
+              } catch {
+                resolve({ _raw: (xhr.responseText || "").substring(0, 500) });
+              }
+            };
+            xhr.onerror = () => resolve({ _error: "XHR error" });
+            xhr.send();
+          } catch (e: any) {
+            resolve({ _error: e.message });
           }
-        };
-        xhr.onerror = () => resolve({ _error: "XHR error" });
-        xhr.send();
-      } catch (e: any) {
-        resolve({ _error: e.message });
+        });
+      }, url);
+    } catch (err: any) {
+      if (i < retries && (err.message?.includes("Execution context was destroyed") || err.message?.includes("navigation"))) {
+        log(`xhrFetch navigation conflict, retry ${i + 1}/${retries}`);
+        await page.waitForTimeout(2000);
+        continue;
       }
-    });
-  }, url);
+      throw err;
+    }
+  }
 }
 
 async function odataSearch(page: Page, query: string): Promise<SearchResponse> {

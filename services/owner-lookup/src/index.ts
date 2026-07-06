@@ -5,6 +5,7 @@ import { getPage, getSearchPage, closeBrowser } from "./browser.js";
 import { extractOwners } from "./extract.js";
 import { searchFolios } from "./search.js";
 
+
 const app = new Hono();
 app.use("/*", cors());
 

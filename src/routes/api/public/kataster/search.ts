@@ -204,7 +204,7 @@ async function wmsIdentify(lat: number, lng: number): Promise<SearchItem | null>
 async function overpassFindHouseNumber(
   centerLat: number, centerLng: number,
   number: string
-): Promise<{ lat: number; lng: number } | null> {
+): Promise<{ lat: number; lng: number; street?: string; housenumber?: string; city?: string } | null> {
   const bbox = `${centerLat - 0.04},${centerLng - 0.04},${centerLat + 0.04},${centerLng + 0.04}`;
   const q = `[out:json];(node(${bbox})[~"addr:housenumber"~"${number.replace(/"/g, '\\"')}"];way(${bbox})[~"addr:housenumber"~"${number.replace(/"/g, '\\"')}"];);out center 1;`;
   try {
@@ -215,12 +215,19 @@ async function overpassFindHouseNumber(
       signal: AbortSignal.timeout(15000),
     });
     if (!res.ok) return null;
-    const data = (await res.json()) as { elements?: Array<{ lat?: number; lon?: number; center?: { lat: number; lon: number } }> };
+    const data = (await res.json()) as { elements?: Array<{ lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }> };
     const el = data.elements?.[0];
     if (!el) return null;
     const lat = el.lat ?? el.center?.lat;
     const lng = el.lon ?? el.center?.lon;
-    if (lat != null && lng != null) return { lat, lng };
+    if (lat != null && lng != null) {
+      return {
+        lat, lng,
+        street: el.tags?.["addr:street"],
+        housenumber: el.tags?.["addr:housenumber"] || el.tags?.["addr:conscriptionnumber"],
+        city: el.tags?.["addr:city"],
+      };
+    }
   } catch { /* ignore */ }
   return null;
 }
@@ -317,31 +324,44 @@ export const Route = createFileRoute("/api/public/kataster/search")({
                 seen.add(key);
                 const wms = await wmsIdentify(overpassCoords.lat, overpassCoords.lng);
                 if (wms) {
-                  const { label, sublabel } = formatAddress(geoResults[0].displayName);
+                  let label: string;
+                  if (overpassCoords.street && overpassCoords.housenumber) {
+                    const parts = [overpassCoords.street, overpassCoords.housenumber].join(" ");
+                    label = overpassCoords.city ? `${parts}, ${overpassCoords.city}` : parts;
+                  } else {
+                    label = formatAddress(geoResults[0].displayName).label;
+                  }
+                  const sublabel = formatAddress(geoResults[0].displayName).sublabel;
                   results.push({ ...wms, label, sublabel, source: "wms" });
                 }
               }
             }
 
-            for (const geo of geoResults) {
-              if (seen.has(`${geo.lat.toFixed(4)},${geo.lng.toFixed(4)}`)) continue;
-              seen.add(`${geo.lat.toFixed(4)},${geo.lng.toFixed(4)}`);
-              const wms = await wmsIdentify(geo.lat, geo.lng);
-              if (wms) {
-                const { label, sublabel } = formatAddress(geo.displayName);
-                results.push({ ...wms, label, sublabel, source: "nominatim" });
-              } else {
-                const { label, sublabel } = formatAddress(geo.displayName);
-                results.push({
-                  lat: geo.lat, lng: geo.lng,
-                  label,
-                  sublabel,
-                  parcelNo: "", ku: "", kuCode: "", lvNumber: "", source: "nominatim",
-                });
+            if (!overpassCoords) {
+              for (const geo of geoResults) {
+                if (seen.has(`${geo.lat.toFixed(4)},${geo.lng.toFixed(4)}`)) continue;
+                seen.add(`${geo.lat.toFixed(4)},${geo.lng.toFixed(4)}`);
+                const wms = await wmsIdentify(geo.lat, geo.lng);
+                if (wms) {
+                  const { label, sublabel } = formatAddress(geo.displayName);
+                  results.push({ ...wms, label, sublabel, source: "nominatim" });
+                } else {
+                  const { label, sublabel } = formatAddress(geo.displayName);
+                  results.push({
+                    lat: geo.lat, lng: geo.lng,
+                    label,
+                    sublabel,
+                    parcelNo: "", ku: "", kuCode: "", lvNumber: "", source: "nominatim",
+                  });
+                }
               }
             }
 
+            const targetKuCode = overpassCoords
+              ? results.find((r) => r.kuCode)?.kuCode
+              : null;
             for (const r of wfsResults) {
+              if (targetKuCode && r.kuCode !== targetKuCode) continue;
               const key = `${r.kuCode}_${r.parcelNo}`;
               if (seen.has(key)) continue;
               seen.add(key);

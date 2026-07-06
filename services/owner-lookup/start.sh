@@ -21,6 +21,9 @@ sleep 1
 
 mkdir -p "$CHROME_USER_DATA"
 
+# Clean stale lock files from previous sessions (common when container restarts with persisting volume)
+rm -f "$CHROME_USER_DATA/SingletonLock" "$CHROME_USER_DATA/SingletonSocket" "$CHROME_USER_DATA/SingletonCookie"
+
 echo "Launching Chromium on DISPLAY=:99 with CDP on port 9222..."
 DISPLAY=:99 "$CHROME_BIN" \
   --no-sandbox \
