@@ -41,7 +41,7 @@ export const Route = createFileRoute("/")({
 
 const MapView = lazy(() => import("@/components/MapView"));
 
-type BaseLayer = "osm" | "satellite" | "topo";
+type BaseLayer = "osm" | "satellite" | "topo" | "ortofoto";
 
 interface PlaceHit {
   kind: "place";
@@ -72,8 +72,7 @@ function Portal() {
   const [base, setBase] = useState<BaseLayer>("osm");
   const [showCadastre, setShowCadastre] = useState(true);
   const [cadastreOpacity, setCadastreOpacity] = useState(85);
-  const [showOrtho, setShowOrtho] = useState(false);
-  const [orthoOpacity, setOrthoOpacity] = useState(95);
+
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [marker, setMarker] = useState<MapMarker | null>(null);
   const [selectedParcel, setSelectedParcel] = useState<ParcelInfo | null>(null);
@@ -370,8 +369,6 @@ function Portal() {
               base={base}
               showCadastre={showCadastre}
               cadastreOpacity={cadastreOpacity / 100}
-              showOrtho={showOrtho}
-              orthoOpacity={orthoOpacity / 100}
               marker={marker}
               onCoords={(lat, lng) => setCoords({ lat, lng })}
               onParcelSelect={handleParcelSelect}
@@ -430,11 +427,12 @@ function Portal() {
                 <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                   Podkladová mapa
                 </div>
-                <div className="grid grid-cols-3 gap-1.5">
-                  <BaseTile tileKey="osm" label="Mapa" active={base === "osm"} onClick={() => setBase("osm")} />
-                  <BaseTile tileKey="satellite" label="Satelit" active={base === "satellite"} onClick={() => setBase("satellite")} />
-                  <BaseTile tileKey="topo" label="Reliéf" active={base === "topo"} onClick={() => setBase("topo")} />
-                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                    <BaseTile tileKey="osm" label="Mapa" active={base === "osm"} onClick={() => setBase("osm")} />
+                    <BaseTile tileKey="satellite" label="Satelit" active={base === "satellite"} onClick={() => setBase("satellite")} />
+                    <BaseTile tileKey="topo" label="Reliéf" active={base === "topo"} onClick={() => setBase("topo")} />
+                    <BaseTile tileKey="ortofoto" label="Ortofoto" active={base === "ortofoto"} onClick={() => setBase("ortofoto")} />
+                  </div>
               </div>
 
               <div className="px-3 py-2">
@@ -448,13 +446,7 @@ function Portal() {
                   onToggle={() => setShowCadastre((v) => !v)}
                   onOpacity={setCadastreOpacity}
                 />
-                <LayerRow
-                  label="Ortofotomozaika 2023"
-                  active={showOrtho}
-                  opacity={orthoOpacity}
-                  onToggle={() => setShowOrtho((v) => !v)}
-                  onOpacity={setOrthoOpacity}
-                />
+
               </div>
             </div>
           )}
@@ -785,6 +777,7 @@ const TILE_PREVIEWS: Record<string, string> = {
   osm: "https://a.tile.openstreetmap.org/7/70/44.png",
   satellite: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/7/44/70",
   topo: "https://a.tile.opentopomap.org/7/70/44.png",
+  ortofoto: "https://ofmozaika.tiles.freemap.sk/7/70/44.jpg",
 };
 
 function BaseTile({ label, active, onClick, tileKey }: { label: string; active: boolean; onClick: () => void; tileKey: string }) {
