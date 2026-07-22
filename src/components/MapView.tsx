@@ -32,7 +32,7 @@ export interface ParcelInfo {
 
 interface MapViewProps {
   base: BaseLayer;
-  showCadastre: boolean;
+  showCadastre?: boolean;
   cadastreOpacity?: number;
   marker?: MapMarker | null;
   onCoords?: (lat: number, lng: number) => void;
@@ -197,7 +197,6 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
   const cadastreRef = useRef<L.TileLayer.WMS | null>(null);
   const esknOverlayRef = useRef<L.TileLayer | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
-  const maskRef = useRef<L.Polygon | null>(null);
   const borderRef = useRef<L.Polyline | null>(null);
 
   useEffect(() => {
@@ -212,6 +211,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
       maxBounds: SK_BOUNDS,
       maxBoundsViscosity: 1.0,
       worldCopyJump: false,
+      fadeAnimation: false,
     });
     mapRef.current = map;
 
@@ -256,6 +256,8 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
       maxZoom: cfg.maxZoom ?? 19,
       maxNativeZoom: cfg.maxNativeZoom,
       noWrap: true,
+      updateWhenIdle: false,
+      keepBuffer: 4,
     });
     baseLayerRef.current.addTo(map);
     baseLayerRef.current.bringToBack();
@@ -270,8 +272,11 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
         "https://kataster.skgeodesy.sk/eskn/rest/services/NR/kn_wmts_norm_wm/MapServer/WMTS/tile/1.0.0/NR_kn_wmts_norm_wm/default/GoogleMapsCompatible/{z}/{y}/{x}.png",
         {
           attribution: "© ÚGKK SR — KN",
+          minZoom: 14,
           maxNativeZoom: 18,
-          maxZoom: 18,
+          maxZoom: 22,
+          updateWhenIdle: false,
+          keepBuffer: 8,
         },
       );
       esknOverlayRef.current.addTo(map);
@@ -282,36 +287,12 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    if (maskRef.current) {
-      map.removeLayer(maskRef.current);
-      maskRef.current = null;
-    }
     if (borderRef.current) {
       map.removeLayer(borderRef.current);
       borderRef.current = null;
     }
 
     const skRing = getSlovakiaRing();
-    // Outer ring covers the whole world (Leaflet [lat, lng])
-    const worldRing: [number, number][] = [
-      [-85, -180],
-      [-85, 180],
-      [85, 180],
-      [85, -180],
-    ];
-
-    const mask = L.polygon([worldRing, skRing], {
-      stroke: false,
-      fillColor: "#9aa4ab",
-      fillOpacity: 1,
-      interactive: false,
-    } as L.PolylineOptions & { fillRule?: string });
-    // ensure even-odd fill so the SK ring punches a clean hole
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (mask.options as any).fillRule = "evenodd";
-    mask.addTo(map);
-    maskRef.current = mask;
-
     const border = L.polyline(skRing, {
       color: "#15803d",
       weight: 2.5,
@@ -339,8 +320,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
       );
       wms.addTo(map);
       cadastreRef.current = wms;
-      // Make sure mask stays under the cadastre overlay
-      if (maskRef.current) maskRef.current.bringToBack();
+      // Make sure base stays under the cadastre overlay
       if (baseLayerRef.current) baseLayerRef.current.bringToBack();
     } else if (!showCadastre && cadastreRef.current) {
       map.removeLayer(cadastreRef.current);
@@ -350,9 +330,8 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
     }
   }, [showCadastre, cadastreOpacity]);
 
-  // Keep mask + border on top of base tiles but below markers
+  // Keep border on top of base tiles but below markers
   useEffect(() => {
-    if (maskRef.current) maskRef.current.bringToFront();
     if (borderRef.current) borderRef.current.bringToFront();
     if (markerRef.current) markerRef.current.setZIndexOffset(1000);
   }, [base, showCadastre]);

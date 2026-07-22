@@ -16,22 +16,6 @@ const UPSTREAMS = [
   "https://kataster.skgeodesy.sk/eskn/services/KE/kn_wms_norm/MapServer/WMSServer",
 ];
 
-async function tryUpstream(url: string, signal: AbortSignal): Promise<Response | null> {
-  try {
-    const res = await fetch(url, {
-      signal,
-      headers: {
-        Accept: "application/json",
-        "User-Agent": UA,
-        Referer: "https://kataster.skgeodesy.sk/",
-      },
-    });
-    return res;
-  } catch {
-    return null;
-  }
-}
-
 export const Route = createFileRoute("/api/public/kataster/identify")({
   server: {
     handlers: {
@@ -39,35 +23,46 @@ export const Route = createFileRoute("/api/public/kataster/identify")({
       GET: async ({ request }) => {
         const u = new URL(request.url);
         const qs = u.searchParams.toString();
-        const errors: string[] = [];
 
-        for (const base of UPSTREAMS) {
-          const ctrl = new AbortController();
-          const id = setTimeout(() => ctrl.abort(), 8000);
-          try {
-            const res = await tryUpstream(`${base}?${qs}`, ctrl.signal);
-            clearTimeout(id);
-            if (res) {
-              const buf = await res.arrayBuffer();
-              const body = new TextDecoder("utf-8").decode(buf);
-              return new Response(body, {
-                status: res.status,
+        const results = await Promise.allSettled(
+          UPSTREAMS.map(async (base) => {
+            const ctrl = new AbortController();
+            const id = setTimeout(() => ctrl.abort(), 4000);
+            try {
+              const res = await fetch(`${base}?${qs}`, {
+                signal: ctrl.signal,
                 headers: {
-                  ...CORS,
-                  "Content-Type": "application/json",
-                  "Cache-Control": "public, max-age=60",
+                  Accept: "application/json",
+                  "User-Agent": UA,
+                  Referer: "https://kataster.skgeodesy.sk/",
                 },
               });
+              clearTimeout(id);
+              if (!res.ok) return null;
+              const buf = await res.arrayBuffer();
+              return new TextDecoder("utf-8").decode(buf);
+            } catch {
+              clearTimeout(id);
+              return null;
             }
-            errors.push(`${base}: no response`);
-          } catch (e) {
-            clearTimeout(id);
-            errors.push(`${base}: ${String(e)}`);
+          })
+        );
+
+        for (const r of results) {
+          if (r.status === "fulfilled" && r.value) {
+            return new Response(r.value, {
+              status: 200,
+              headers: {
+                ...CORS,
+                "Content-Type": "application/json",
+                "Cache-Control": "public, max-age=60",
+              },
+            });
           }
         }
 
         return new Response(
-          JSON.stringify({ error: "upstream_failed", detail: "All upstreams unreachable", attempts: errors }),
+          JSON.stringify({ error: "upstream_failed", detail: "All upstreams unreachable" }),
           { status: 502, headers: { ...CORS, "Content-Type": "application/json" } },
         );
       },

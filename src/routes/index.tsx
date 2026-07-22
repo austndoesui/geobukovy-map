@@ -69,9 +69,7 @@ function Portal() {
   const mapRef = useRef<MapViewHandle>(null);
   const [mounted, setMounted] = useState(false);
   const [showLayers, setShowLayers] = useState(false);
-  const [base, setBase] = useState<BaseLayer>("osm");
-  const [showCadastre, setShowCadastre] = useState(true);
-  const [cadastreOpacity, setCadastreOpacity] = useState(85);
+  const [base, setBase] = useState<BaseLayer>("ortofoto");
 
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [marker, setMarker] = useState<MapMarker | null>(null);
@@ -191,35 +189,111 @@ function Portal() {
     };
   }, [query, runSearch]);
 
-  const pickHit = (h: Hit) => {
+  const pickHit = async (h: Hit) => {
     setMarker({ lat: h.lat, lng: h.lng, label: h.title, zoom: h.kind === "parcel" ? 18 : 17 });
     setShowHits(false);
     setQuery(h.title);
-    if (h.kind === "parcel") {
-      const a = h.rawAttributes || {};
-      const pick = (...keys: string[]) => {
-        for (const k of keys) {
-          for (const key of Object.keys(a)) {
-            if (key.toLowerCase().includes(k.toLowerCase()) && a[key] != null && String(a[key]).trim() !== "") {
-              return String(a[key]);
-            }
+
+    const buildParcelInfo = (info: {
+      parcelNo: string;
+      ku: string;
+      lv: string | null;
+      vymera: string | null;
+      druh: string | null;
+      layer: string;
+      rawAttributes: Record<string, unknown>;
+    }) => ({
+      parcelNo: info.parcelNo,
+      ku: info.ku,
+      lv: info.lv,
+      vymera: info.vymera,
+      druh: info.druh,
+      layer: info.layer,
+      lat: h.lat,
+      lng: h.lng,
+      zbgisUrl: `https://zbgis.skgeodesy.sk/mkzbgis/sk/kataster?pos=${h.lat.toFixed(6)},${h.lng.toFixed(6)},19&bm=zbgis&sc_p=kn`,
+      rawAttributes: info.rawAttributes,
+    });
+
+    const a = h.kind === "parcel" ? (h.rawAttributes || {}) : {};
+    const pick = (...keys: string[]) => {
+      for (const k of keys) {
+        for (const key of Object.keys(a)) {
+          if (key.toLowerCase().includes(k.toLowerCase()) && a[key] != null && String(a[key]).trim() !== "") {
+            return String(a[key]);
           }
         }
-        return null;
-      };
-      setSelectedParcel({
-        parcelNo: pick("číslo parcely", "parcelné číslo", "cislo_parcely", "parcelné", "parcelne") || h.title.replace("Parcela ", ""),
-        ku: pick("názov katastrálneho", "názov_ku", "nazov_ku") || "",
+      }
+      return null;
+    };
+
+    const parcelNo = pick("číslo parcely", "parcelné číslo", "cislo_parcely", "parcelné", "parcelne");
+    const ku = pick("názov katastrálneho", "názov_ku", "nazov_ku");
+
+    if (parcelNo && ku) {
+      setSelectedParcel(buildParcelInfo({
+        parcelNo: parcelNo,
+        ku: ku,
         lv: pick("list vlastníctva", "listu vlastníctva", "číslo listu", "cislo_lv", "list vlast"),
         vymera: pick("vymera", "výmera"),
         druh: pick("druh pozemku", "druh_pozemku", "druh"),
-        layer: h.layerName,
-        lat: h.lat,
-        lng: h.lng,
-        zbgisUrl: `https://zbgis.skgeodesy.sk/mkzbgis/sk/kataster?pos=${h.lat.toFixed(6)},${h.lng.toFixed(6)},19&bm=zbgis&sc_p=kn`,
+        layer: h.kind === "parcel" ? h.layerName : "Parcela",
         rawAttributes: a,
-      });
+      }));
+      return;
     }
+
+    // Fallback: call WMS identify at these coordinates
+    try {
+      const buf = 0.001;
+      const bbox = `${h.lat - buf},${h.lng - buf},${h.lat + buf},${h.lng + buf}`;
+      const qs =
+        `SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo` +
+        `&LAYERS=5,8&QUERY_LAYERS=5,8&I=250&J=250&WIDTH=501&HEIGHT=501` +
+        `&BBOX=${bbox}&CRS=EPSG:4326&INFO_FORMAT=application%2Fgeo%2Bjson&FEATURE_COUNT=3`;
+      const res = await fetch(`/api/public/kataster/identify?${qs}`);
+      if (res.ok) {
+        const data: { features?: Array<{ geometry?: unknown; properties: Record<string, unknown>; layerName?: string }> } = await res.json();
+        const feature = data?.features?.find((f) => /parcel/i.test(f.properties?.LAYER_NAME as string || ""));
+        if (feature) {
+          const props = feature.properties;
+          const pickProp = (...keys: string[]) => {
+            for (const k of keys) {
+              for (const key of Object.keys(props)) {
+                if (key.toLowerCase().includes(k.toLowerCase()) && props[key] != null && String(props[key]).trim() !== "") {
+                  return String(props[key]);
+                }
+              }
+            }
+            return null;
+          };
+          const pn = pickProp("číslo parcely", "parcelné číslo", "cislo_parcely", "parcelné", "parcelne") || "—";
+          const kn = pickProp("názov katastrálneho", "názov_ku", "nazov_ku") || "—";
+          setSelectedParcel(buildParcelInfo({
+            parcelNo: pn,
+            ku: kn,
+            lv: pickProp("list vlastníctva", "listu vlastníctva", "číslo listu", "cislo_lv", "list vlast"),
+            vymera: pickProp("vymera", "výmera"),
+            druh: pickProp("druh pozemku", "druh_pozemku", "druh"),
+            layer: feature.properties?.LAYER_NAME as string || feature.layerName || "Parcela",
+            rawAttributes: props,
+          }));
+          return;
+        }
+      }
+    } catch {
+      // identify failed — show basic info
+    }
+
+    setSelectedParcel(buildParcelInfo({
+      parcelNo: parcelNo || "—",
+      ku: ku || "—",
+      lv: null,
+      vymera: null,
+      druh: null,
+      layer: h.kind === "parcel" ? h.layerName : "Parcela",
+      rawAttributes: a,
+    }));
   };
 
   const handleParcelSelect = useCallback((info: ParcelInfo) => {
@@ -367,8 +441,6 @@ function Portal() {
             <MapView
               ref={mapRef}
               base={base}
-              showCadastre={showCadastre}
-              cadastreOpacity={cadastreOpacity / 100}
               marker={marker}
               onCoords={(lat, lng) => setCoords({ lat, lng })}
               onParcelSelect={handleParcelSelect}
@@ -422,31 +494,17 @@ function Portal() {
           </button>
 
           {showLayers && (
-            <div className="absolute right-0 top-full mt-1.5 w-[260px] origin-top-right rounded-lg border border-border bg-surface">
+            <div className="absolute right-0 top-full mt-1.5 w-[300px] origin-top-right rounded-lg border border-border bg-surface">
               <div className="border-b border-border px-3 py-2.5">
-                <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                   Podkladová mapa
                 </div>
-                <div className="grid grid-cols-2 gap-1.5">
+                <div className="flex gap-1.5">
                     <BaseTile tileKey="osm" label="Mapa" active={base === "osm"} onClick={() => setBase("osm")} />
                     <BaseTile tileKey="satellite" label="Satelit" active={base === "satellite"} onClick={() => setBase("satellite")} />
                     <BaseTile tileKey="topo" label="Reliéf" active={base === "topo"} onClick={() => setBase("topo")} />
                     <BaseTile tileKey="ortofoto" label="Ortofoto" active={base === "ortofoto"} onClick={() => setBase("ortofoto")} />
                   </div>
-              </div>
-
-              <div className="px-3 py-2">
-                <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  Prekryvné vrstvy
-                </div>
-                <LayerRow
-                  label="Kataster nehnuteľností"
-                  active={showCadastre}
-                  opacity={cadastreOpacity}
-                  onToggle={() => setShowCadastre((v) => !v)}
-                  onOpacity={setCadastreOpacity}
-                />
-
               </div>
             </div>
           )}
@@ -730,72 +788,73 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
   );
 }
 
-function LayerRow({
-  label,
-  active,
-  opacity,
-  onToggle,
-  onOpacity,
-}: {
-  label: string;
-  active: boolean;
-  opacity: number;
-  onToggle: () => void;
-  onOpacity: (v: number) => void;
-}) {
-  return (
-    <div className="py-1.5">
-      <label className="flex cursor-pointer items-center gap-2.5">
-        <input
-          type="checkbox"
-          checked={active}
-          onChange={onToggle}
-          className="h-3.5 w-3.5 cursor-pointer accent-primary"
-        />
-        <span className="flex-1 text-[12.5px] font-medium text-foreground">{label}</span>
-        {active && (
-          <span className="font-mono text-[10px] text-muted-foreground">{opacity}%</span>
-        )}
-      </label>
-      {active && (
-        <div className="mt-1.5 flex items-center gap-2 pl-6">
-          <input
-            type="range"
-            min={10}
-            max={100}
-            value={opacity}
-            onChange={(e) => onOpacity(Number(e.target.value))}
-            className="h-1 flex-1 cursor-pointer accent-primary"
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-const TILE_PREVIEWS: Record<string, string> = {
-  osm: "https://a.tile.openstreetmap.org/7/70/44.png",
-  satellite: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/7/44/70",
-  topo: "https://a.tile.opentopomap.org/7/70/44.png",
-  ortofoto: "https://ofmozaika.tiles.freemap.sk/7/70/44.jpg",
-};
-
 function BaseTile({ label, active, onClick, tileKey }: { label: string; active: boolean; onClick: () => void; tileKey: string }) {
-  const previewUrl = TILE_PREVIEWS[tileKey];
+  const tiles = useMemo(() => {
+    const z = 9;
+    const lat = 48.7;
+    const lng = 19.5;
+    const n = Math.pow(2, z);
+    const ftx = ((lng + 180) / 360) * n;
+    const fty = (1 - Math.log(Math.tan((lat * Math.PI) / 180) + 1 / Math.cos((lat * Math.PI) / 180)) / Math.PI) / 2 * n;
+    const cx = Math.floor(ftx);
+    const cy = Math.floor(fty);
+    const T = 256;
+    const ox = (ftx - cx) * T;
+    const oy = (fty - cy) * T;
+    const result: { x: number; y: number; left: string; top: string; url: string }[] = [];
+    const templates: Record<string, string> = {
+      osm: `https://a.tile.openstreetmap.org/{z}/{x}/{y}.png`,
+      satellite: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}`,
+      topo: `https://a.tile.opentopomap.org/{z}/{x}/{y}.png`,
+      ortofoto: `https://ofmozaika.tiles.freemap.sk/{z}/{x}/{y}.jpg`,
+    };
+    const tpl = templates[tileKey] || templates.osm;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const tx = (((cx + dx) % n) + n) % n;
+        const ty = cy + dy;
+        if (ty < 0 || ty >= n) continue;
+        const url = tpl.replace("{z}", String(z)).replace(/\{x\}/g, String(tx)).replace(/\{y\}/g, String(ty));
+        result.push({ x: tx, y: ty, left: `calc(50% - ${ox}px + ${dx * T}px)`, top: `calc(50% - ${oy}px + ${dy * T}px)`, url });
+      }
+    }
+    return result;
+  }, [tileKey]);
+
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col items-center gap-1 rounded-md border text-[11px] font-medium transition-colors ${
+      className={`flex flex-1 min-w-0 flex-col items-center gap-0.5 rounded-md border text-[11px] font-medium transition-colors overflow-hidden ${
         active
           ? "border-primary bg-primary text-primary-foreground"
           : "border-border bg-surface text-muted-foreground hover:border-border-strong hover:text-foreground"
       }`}
     >
-      <div
-        className="h-[56px] w-full rounded-t-[5px] bg-cover bg-center"
-        style={{ backgroundImage: previewUrl ? `url(${previewUrl})` : undefined }}
-      />
-      <span className="pb-1.5 pt-0.5">{label}</span>
+      <div className="relative h-[52px] w-full bg-[#e8edf1]">
+        {tiles.map((t) => (
+          <div
+            key={`${t.x}-${t.y}`}
+            className="absolute bg-cover bg-no-repeat"
+            style={{
+              width: 256,
+              height: 256,
+              left: t.left,
+              top: t.top,
+              backgroundImage: `url(${t.url})`,
+            }}
+          />
+        ))}
+        {active && (
+          <div className="absolute inset-0 flex items-center justify-center bg-primary/30">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+          </div>
+        )}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 pb-1 pt-4">
+          <span className="text-[10px] font-medium text-white leading-tight">{label}</span>
+        </div>
+      </div>
     </button>
   );
 }

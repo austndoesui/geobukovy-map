@@ -156,11 +156,13 @@ async function nominatimSearch(q: string): Promise<Array<{ lat: number; lng: num
 
 const ZBGIS_AREAS: Record<string, string> = {};
 
-async function zbgisSuggest(q: string): Promise<Array<{ text: string; lat: number; lng: number; description: string }>> {
+async function zbgisSuggest(q: string): Promise<Array<{
+  text: string; lat: number; lng: number; description: string; category: string;
+}>> {
   try {
     const res = await fetch(`${ZBGIS_SUGGEST_URL}?q=${encodeURIComponent(q)}`, {
       headers: { "User-Agent": UA },
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return [];
     const data = (await res.json()) as {
@@ -174,15 +176,21 @@ async function zbgisSuggest(q: string): Promise<Array<{ text: string; lat: numbe
       }>;
     };
     if (!data.items?.length) return [];
-    const out: Array<{ text: string; lat: number; lng: number; description: string }> = [];
+    const out: Array<{ text: string; lat: number; lng: number; description: string; category: string }> = [];
     for (const item of data.items) {
       const d = item.data;
-      if (d?.category !== "adresa") continue;
+      if (!d) continue;
       const coords = d.extent?.coordinates;
       if (!coords?.length) continue;
       const pair = coords[0];
       if (!pair || pair.length < 2) continue;
-      out.push({ text: d.text || "", lat: pair[1], lng: pair[0], description: d.description || "" });
+      out.push({
+        text: d.text || "",
+        lat: pair[1],
+        lng: pair[0],
+        description: d.description || "",
+        category: d.category || "",
+      });
     }
     return out;
   } catch {
@@ -198,16 +206,16 @@ async function wmsIdentify(lat: number, lng: number): Promise<SearchItem | null>
     `&LAYERS=5,8&QUERY_LAYERS=5,8&I=250&J=250&WIDTH=501&HEIGHT=501` +
     `&BBOX=${bbox}&CRS=EPSG:4326&INFO_FORMAT=application%2Fgeo%2Bjson&FEATURE_COUNT=5`;
 
-  for (const base of WMS_UPSTREAMS) {
-    try {
-      const res = await fetch(`${base}?${qs}`, {
-        signal: AbortSignal.timeout(8000),
+  const results = await Promise.allSettled(
+    WMS_UPSTREAMS.map((base) =>
+      fetch(`${base}?${qs}`, {
+        signal: AbortSignal.timeout(4000),
         headers: { "User-Agent": UA, Referer: "https://kataster.skgeodesy.sk/" },
-      });
-      if (!res.ok) continue;
-      const data = (await res.json()) as { features?: Array<{ properties: Record<string, unknown>; layerName?: string }> };
-      const feature = data?.features?.find((f) => /parcela.*c/i.test(f.layerName || ""));
-      if (feature) {
+      }).then(async (res) => {
+        if (!res.ok) return null;
+        const data = (await res.json()) as { features?: Array<{ properties: Record<string, unknown>; layerName?: string }> };
+        const feature = data?.features?.find((f) => /parcela.*c/i.test(f.layerName || ""));
+        if (!feature) return null;
         const p = feature.properties;
         const keys = Object.keys(p);
         const findKey = (matcher: (k: string) => boolean): string => {
@@ -218,7 +226,6 @@ async function wmsIdentify(lat: number, lng: number): Promise<SearchItem | null>
         const kuName = findKey((k) => /názov.*katastr|katastr.*názov|nazov.*katastr|katastr.*nazov/i.test(k));
         const kuCode = findKey((k) => /kód.*katastr|kod.*katastr/i.test(k) || /k\.ú\.?\s*kód/i.test(k));
         const lvNumber = findKey((k) => /list.*vlastn|cislo.*list/i.test(k) || /číslo.*list/i.test(k));
-        const areaVal = findKey((k) => /vymera/i.test(k) || /výmera/i.test(k));
         return {
           lat, lng,
           label: `Parcela ${parcelNo} · k.ú. ${kuName}`,
@@ -226,14 +233,14 @@ async function wmsIdentify(lat: number, lng: number): Promise<SearchItem | null>
           parcelNo, ku: kuName, kuCode, lvNumber,
           layerName: feature.layerName,
           source: "wms" as const,
-          attributes: Object.fromEntries(
-            keys.map((k) => [k, String(p[k] ?? "")])
-          ),
+          attributes: Object.fromEntries(keys.map((k) => [k, String(p[k] ?? "")])),
         };
-      }
-    } catch {
-      continue;
-    }
+      })
+    )
+  );
+
+  for (const r of results) {
+    if (r.status === "fulfilled" && r.value) return r.value;
   }
   return null;
 }
@@ -317,8 +324,8 @@ export const Route = createFileRoute("/api/public/kataster/search")({
           const seen = new Set<string>();
           const extracted = extractParcelNumbers(q);
 
-          // Phase 1: Run all data sources in parallel
-          const [zbgisResults, wfsResults, geoResults] = await Promise.all([
+          // Phase 1: Run all data sources in parallel (10s timeout)
+          const [zbgisResults, wfsResults] = await Promise.all([
             zbgisSuggest(q),
             (async () => {
               for (const parcelVal of extracted) {
@@ -330,37 +337,73 @@ export const Route = createFileRoute("/api/public/kataster/search")({
               }
               return [] as SearchItem[];
             })(),
-            // Nominatim only needed when ZBGIS has no results
-            Promise.resolve([] as Array<{ lat: number; lng: number; displayName: string; osmType: string }>),
           ]);
 
-          // Phase 2: ZBGIS address results → WMS identify → parcel + LV
-          // Only ZBGIS results shown here; WFS/Nominatim used only when ZBGIS finds nothing
+          // Phase 2: ZBGIS results → handle by category
           if (zbgisResults.length > 0) {
-            for (const zr of zbgisResults) {
+            const addressResults = zbgisResults.filter((zr) => zr.category === "adresa");
+            const directResults = zbgisResults.filter((zr) => zr.category !== "adresa");
+
+            // Direct-category results (parcela, ku, ulica, obec) — no WMS needed
+            for (const zr of directResults) {
               const key = `${zr.lat.toFixed(4)},${zr.lng.toFixed(4)}`;
               if (seen.has(key)) continue;
               seen.add(key);
-              const wms = await wmsIdentify(zr.lat, zr.lng);
               const okres = zr.description.startsWith("okres ") ? zr.description : `okres ${zr.description}`;
-              if (wms) {
-                results.push({ ...wms, label: zr.text, sublabel: okres, source: "zbgis" });
-              } else {
-                results.push({
-                  lat: zr.lat, lng: zr.lng,
-                  label: zr.text, sublabel: okres,
-                  parcelNo: "", ku: "", kuCode: "", lvNumber: "", source: "zbgis",
-                });
+              let parcelNo = "";
+              let ku = "";
+              let kuCode = "";
+
+              if (zr.category === "parcela") {
+                const m = zr.text.match(/(\d{1,6}(?:\/\d{1,6})?)/);
+                if (m) parcelNo = m[1];
+                const descClean = zr.description.replace(/^okres\s+/i, "");
+                if (descClean) ku = descClean;
+              }
+              if (zr.category === "ku") {
+                ku = zr.text;
+                const dc = zr.description.replace(/^okres\s+/i, "");
+                if (dc) kuCode = dc;
+              }
+
+              results.push({
+                lat: zr.lat, lng: zr.lng,
+                label: zr.text,
+                sublabel: okres,
+                parcelNo, ku, kuCode, lvNumber: "",
+                source: "zbgis",
+                attributes: ku ? { "Katastrálne územie": ku } : undefined,
+              });
+            }
+
+            // Address results → WMS identify (parallel, bounded)
+            if (addressResults.length > 0) {
+              const wmsResults = await Promise.allSettled(
+                addressResults.map((zr) => wmsIdentify(zr.lat, zr.lng))
+              );
+              for (let i = 0; i < addressResults.length; i++) {
+                const zr = addressResults[i];
+                const key = `${zr.lat.toFixed(4)},${zr.lng.toFixed(4)}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                const wms = wmsResults[i].status === "fulfilled" ? (wmsResults[i] as PromiseFulfilledResult<SearchItem | null>).value : null;
+                const okres = zr.description.startsWith("okres ") ? zr.description : `okres ${zr.description}`;
+                if (wms) {
+                  results.push({ ...wms, label: zr.text, sublabel: okres, source: "zbgis" });
+                } else {
+                  results.push({
+                    lat: zr.lat, lng: zr.lng,
+                    label: zr.text, sublabel: okres,
+                    parcelNo: "", ku: "", kuCode: "", lvNumber: "", source: "zbgis",
+                  });
+                }
               }
             }
           }
 
-          // Phase 3: No ZBGIS results → fallback to Overpass + Nominatim + WMS
+          // Phase 3: No ZBGIS results → fallback to Nominatim + WMS (parallel)
           if (zbgisResults.length === 0) {
-            let geoData = geoResults;
-            if (geoData.length === 0) {
-              geoData = await nominatimSearch(q);
-            }
+            const geoData = await nominatimSearch(q);
 
             const firstNumber = extracted[0] || "";
             const overpassCoords = geoData.length > 0 && firstNumber
@@ -387,10 +430,14 @@ export const Route = createFileRoute("/api/public/kataster/search")({
             }
 
             if (!overpassCoords) {
-              for (const geo of geoData) {
+              const wmsResults = await Promise.allSettled(
+                geoData.map((geo) => wmsIdentify(geo.lat, geo.lng))
+              );
+              for (let i = 0; i < geoData.length; i++) {
+                const geo = geoData[i];
                 if (seen.has(`${geo.lat.toFixed(4)},${geo.lng.toFixed(4)}`)) continue;
                 seen.add(`${geo.lat.toFixed(4)},${geo.lng.toFixed(4)}`);
-                const wms = await wmsIdentify(geo.lat, geo.lng);
+                const wms = wmsResults[i].status === "fulfilled" ? (wmsResults[i] as PromiseFulfilledResult<SearchItem | null>).value : null;
                 if (wms) {
                   const { label, sublabel } = formatAddress(geo.displayName);
                   results.push({ ...wms, label, sublabel, source: "nominatim" });
