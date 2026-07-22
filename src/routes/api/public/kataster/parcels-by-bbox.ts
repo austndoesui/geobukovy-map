@@ -98,8 +98,10 @@ export const Route = createFileRoute("/api/public/kataster/parcels-by-bbox")({
         for (let i = 0; i < points.length; i += BATCH) {
           const batch = points.slice(i, i + BATCH);
           const results = await Promise.allSettled(batch.map((p) => identifyPoint(p.lat, p.lng)));
-          for (const r of results) {
+          for (let ri = 0; ri < results.length; ri++) {
+            const r = results[ri];
             if (r.status !== "fulfilled") continue;
+            const pt = batch[ri];
             for (const props of r.value) {
               const parsed = parseProps(props);
               const key = `${parsed.kuCode}_${parsed.parcelNo}`;
@@ -112,8 +114,8 @@ export const Route = createFileRoute("/api/public/kataster/parcels-by-bbox")({
                 vymera: parsed.vymera,
                 druh: parsed.druh,
                 kuCode: parsed.kuCode,
-                lat: props.lat ?? props.LAT ?? props.y ?? null,
-                lng: props.lon ?? props.LON ?? props.x ?? null,
+                lat: pt.lat,
+                lng: pt.lng,
               });
             }
           }
