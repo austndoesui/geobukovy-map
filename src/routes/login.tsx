@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { login } from "@/lib/auth";
+import { login, getSession } from "@/lib/auth";
 import logo from "@/assets/logo-removebg-preview.png";
 import { ArrowLeft, Lock, User } from "lucide-react";
 
@@ -28,7 +28,8 @@ function LoginPage() {
       setError(r.error ?? "Chyba prihlásenia.");
       return;
     }
-    navigate({ to: "/admin" });
+    const session = getSession();
+    navigate({ to: session?.role === "admin" ? "/admin" : "/" });
   };
 
   return (

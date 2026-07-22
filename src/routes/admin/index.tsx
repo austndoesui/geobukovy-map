@@ -22,6 +22,7 @@ function AdminHub() {
   useEffect(() => {
     checkSession().then((s) => {
       if (!s) { navigate({ to: "/login" }); return; }
+      if (s.role !== "admin") { navigate({ to: "/" }); return; }
       setSession(s);
     });
   }, [navigate]);
@@ -32,37 +33,6 @@ function AdminHub() {
     await logout();
     navigate({ to: "/" });
   };
-
-  if (session.role !== "admin") {
-    return (
-      <div className="min-h-screen bg-background text-foreground">
-        <header className="flex h-14 items-center border-b border-border bg-surface px-4">
-          <Link to="/" className="flex items-center gap-2.5">
-            <img src={logo} alt="" className="h-8 w-8 object-contain" />
-            <div className="leading-tight">
-              <div className="font-display text-[14px] font-semibold tracking-tight">GeoBukový</div>
-              <div className="text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">Administrácia</div>
-            </div>
-          </Link>
-          <div className="ml-auto">
-            <button onClick={onLogout} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[12.5px] font-medium hover:bg-muted">
-              <LogOut className="h-4 w-4" /> Odhlásiť
-            </button>
-          </div>
-        </header>
-        <main className="mx-auto max-w-md p-6">
-          <div className="mt-16 flex flex-col items-center gap-3 text-center">
-            <Shield className="h-12 w-12 text-muted-foreground" />
-            <h2 className="font-display text-[18px] font-semibold">Obmedzený prístup</h2>
-            <p className="text-[13px] text-muted-foreground">Nemáte administrátorské oprávnenie.</p>
-            <Link to="/" className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-4 text-[13px] font-medium text-primary-foreground hover:opacity-90">
-              <ArrowLeft className="h-4 w-4" /> Späť na mapu
-            </Link>
-          </div>
-        </main>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
