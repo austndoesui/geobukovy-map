@@ -9,10 +9,10 @@ const CACHE_TTL = 3600000;
 async function ensureSession(page: Page): Promise<boolean> {
   try {
     await page.goto(ESKN_PORTAL + "/sk/Home/Index", {
-      waitUntil: "networkidle",
-      timeout: 30000,
+      waitUntil: "load",
+      timeout: 15000,
     });
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(1000);
     const title = await page.title();
     console.log(`[batch-extract] Session page title="${title}"`);
     const hasCaptcha = await page.evaluate(() => {
@@ -34,7 +34,7 @@ async function ensureSession(page: Page): Promise<boolean> {
 }
 
 async function parseOwnerTable(page: Page) {
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(1000);
 
   const owners = await page.evaluate(() => {
     const results: Array<{ meno: string; adresa: string; podiel: string }> = [];
@@ -97,7 +97,7 @@ export async function batchExtractOwners(
 
     const url = `${BO_API}/GeneratePrfPublic?prfNumber=${req.lv}&cadastralUnitCode=${req.kuCode}&outputType=html`;
     try {
-      await page.goto(url, { waitUntil: "networkidle", timeout: 30000 });
+      await page.goto(url, { waitUntil: "load", timeout: 20000 });
     } catch (e) {
       console.log(`[batch-extract] goto failed ${key}: ${String(e).substring(0, 150)}`);
       results.push({ lv: req.lv, ku: req.kuCode, parcelNo: req.parcelNo, owners: [] });

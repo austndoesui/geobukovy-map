@@ -29,12 +29,12 @@ export const Route = createFileRoute("/api/public/kataster/owners-batch")({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ requests }),
-            signal: AbortSignal.timeout(120000),
+            signal: AbortSignal.timeout(60000),
           });
           if (!res.ok) {
             return new Response(
-              JSON.stringify({ error: "playwright_failed", detail: await res.text() }),
-              { status: 502, headers: { ...CORS, "Content-Type": "application/json" } },
+              JSON.stringify({ results: [], note: "playwright_error" }),
+              { status: 200, headers: { ...CORS, "Content-Type": "application/json" } },
             );
           }
           const data = await res.json();
@@ -44,8 +44,8 @@ export const Route = createFileRoute("/api/public/kataster/owners-batch")({
           });
         } catch (err: any) {
           return new Response(
-            JSON.stringify({ error: "batch_failed", detail: err?.message || String(err) }),
-            { status: 502, headers: { ...CORS, "Content-Type": "application/json" } },
+            JSON.stringify({ results: [], note: "playwright_unreachable" }),
+            { status: 200, headers: { ...CORS, "Content-Type": "application/json" } },
           );
         }
       },
