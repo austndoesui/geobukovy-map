@@ -11,6 +11,30 @@ app.use("/*", cors());
 
 app.get("/api/health", (c) => c.json({ ok: true }));
 
+app.post("/api/owners/batch", async (c) => {
+  const body = await c.req.json();
+  const requests: Array<{ lat: number; lng: number; kuCode: string; parcelNo: string; lv: string }> = body.requests || [];
+
+  if (requests.length === 0) {
+    return c.json({ error: "no requests provided" }, 400);
+  }
+
+  let page;
+  try {
+    page = await getPage();
+    const results = [];
+    for (const req of requests) {
+      const detail = await extractOwners(page, req.lat, req.lng, req.kuCode, req.parcelNo, req.lv);
+      results.push(detail);
+    }
+    return c.json({ results });
+  } catch (err: any) {
+    return c.json({ error: "batch_extraction_failed", detail: err?.message || String(err) }, 502);
+  } finally {
+    if (page) await page.close().catch(() => {});
+  }
+});
+
 app.post("/api/owners", async (c) => {
   const body = await c.req.json();
   const { lat, lng, kuCode, parcelNo, lv } = body;

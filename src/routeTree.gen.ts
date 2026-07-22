@@ -20,6 +20,7 @@ import { Route as ApiAuthLoginRouteImport } from './routes/api/auth/login'
 import { Route as ApiAuthAdminIndexRouteImport } from './routes/api/auth/admin/index'
 import { Route as ApiPublicKatasterSearchRouteImport } from './routes/api/public/kataster/search'
 import { Route as ApiPublicKatasterParcelsByBboxRouteImport } from './routes/api/public/kataster/parcels-by-bbox'
+import { Route as ApiPublicKatasterOwnersBatchRouteImport } from './routes/api/public/kataster/owners-batch'
 import { Route as ApiPublicKatasterLvRouteImport } from './routes/api/public/kataster/lv'
 import { Route as ApiPublicKatasterIdentifyRouteImport } from './routes/api/public/kataster/identify'
 
@@ -79,6 +80,12 @@ const ApiPublicKatasterParcelsByBboxRoute =
     path: '/api/public/kataster/parcels-by-bbox',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicKatasterOwnersBatchRoute =
+  ApiPublicKatasterOwnersBatchRouteImport.update({
+    id: '/api/public/kataster/owners-batch',
+    path: '/api/public/kataster/owners-batch',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicKatasterLvRoute = ApiPublicKatasterLvRouteImport.update({
   id: '/api/public/kataster/lv',
   path: '/api/public/kataster/lv',
@@ -102,6 +109,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/setup': typeof ApiAuthSetupRoute
   '/api/public/kataster/identify': typeof ApiPublicKatasterIdentifyRoute
   '/api/public/kataster/lv': typeof ApiPublicKatasterLvRoute
+  '/api/public/kataster/owners-batch': typeof ApiPublicKatasterOwnersBatchRoute
   '/api/public/kataster/parcels-by-bbox': typeof ApiPublicKatasterParcelsByBboxRoute
   '/api/public/kataster/search': typeof ApiPublicKatasterSearchRoute
   '/api/auth/admin/': typeof ApiAuthAdminIndexRoute
@@ -117,6 +125,7 @@ export interface FileRoutesByTo {
   '/api/auth/setup': typeof ApiAuthSetupRoute
   '/api/public/kataster/identify': typeof ApiPublicKatasterIdentifyRoute
   '/api/public/kataster/lv': typeof ApiPublicKatasterLvRoute
+  '/api/public/kataster/owners-batch': typeof ApiPublicKatasterOwnersBatchRoute
   '/api/public/kataster/parcels-by-bbox': typeof ApiPublicKatasterParcelsByBboxRoute
   '/api/public/kataster/search': typeof ApiPublicKatasterSearchRoute
   '/api/auth/admin': typeof ApiAuthAdminIndexRoute
@@ -133,6 +142,7 @@ export interface FileRoutesById {
   '/api/auth/setup': typeof ApiAuthSetupRoute
   '/api/public/kataster/identify': typeof ApiPublicKatasterIdentifyRoute
   '/api/public/kataster/lv': typeof ApiPublicKatasterLvRoute
+  '/api/public/kataster/owners-batch': typeof ApiPublicKatasterOwnersBatchRoute
   '/api/public/kataster/parcels-by-bbox': typeof ApiPublicKatasterParcelsByBboxRoute
   '/api/public/kataster/search': typeof ApiPublicKatasterSearchRoute
   '/api/auth/admin/': typeof ApiAuthAdminIndexRoute
@@ -150,6 +160,7 @@ export interface FileRouteTypes {
     | '/api/auth/setup'
     | '/api/public/kataster/identify'
     | '/api/public/kataster/lv'
+    | '/api/public/kataster/owners-batch'
     | '/api/public/kataster/parcels-by-bbox'
     | '/api/public/kataster/search'
     | '/api/auth/admin/'
@@ -165,6 +176,7 @@ export interface FileRouteTypes {
     | '/api/auth/setup'
     | '/api/public/kataster/identify'
     | '/api/public/kataster/lv'
+    | '/api/public/kataster/owners-batch'
     | '/api/public/kataster/parcels-by-bbox'
     | '/api/public/kataster/search'
     | '/api/auth/admin'
@@ -180,6 +192,7 @@ export interface FileRouteTypes {
     | '/api/auth/setup'
     | '/api/public/kataster/identify'
     | '/api/public/kataster/lv'
+    | '/api/public/kataster/owners-batch'
     | '/api/public/kataster/parcels-by-bbox'
     | '/api/public/kataster/search'
     | '/api/auth/admin/'
@@ -196,6 +209,7 @@ export interface RootRouteChildren {
   ApiAuthSetupRoute: typeof ApiAuthSetupRoute
   ApiPublicKatasterIdentifyRoute: typeof ApiPublicKatasterIdentifyRoute
   ApiPublicKatasterLvRoute: typeof ApiPublicKatasterLvRoute
+  ApiPublicKatasterOwnersBatchRoute: typeof ApiPublicKatasterOwnersBatchRoute
   ApiPublicKatasterParcelsByBboxRoute: typeof ApiPublicKatasterParcelsByBboxRoute
   ApiPublicKatasterSearchRoute: typeof ApiPublicKatasterSearchRoute
   ApiAuthAdminIndexRoute: typeof ApiAuthAdminIndexRoute
@@ -280,6 +294,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicKatasterParcelsByBboxRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/kataster/owners-batch': {
+      id: '/api/public/kataster/owners-batch'
+      path: '/api/public/kataster/owners-batch'
+      fullPath: '/api/public/kataster/owners-batch'
+      preLoaderRoute: typeof ApiPublicKatasterOwnersBatchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/kataster/lv': {
       id: '/api/public/kataster/lv'
       path: '/api/public/kataster/lv'
@@ -308,6 +329,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthSetupRoute: ApiAuthSetupRoute,
   ApiPublicKatasterIdentifyRoute: ApiPublicKatasterIdentifyRoute,
   ApiPublicKatasterLvRoute: ApiPublicKatasterLvRoute,
+  ApiPublicKatasterOwnersBatchRoute: ApiPublicKatasterOwnersBatchRoute,
   ApiPublicKatasterParcelsByBboxRoute: ApiPublicKatasterParcelsByBboxRoute,
   ApiPublicKatasterSearchRoute: ApiPublicKatasterSearchRoute,
   ApiAuthAdminIndexRoute: ApiAuthAdminIndexRoute,

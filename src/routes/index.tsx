@@ -893,43 +893,67 @@ function MultiOwnerPanel({ parcels, onClear }: { parcels: Record<string, unknown
       uniqueLVs.get(key)!.parcels.push(p);
     }
 
-    Promise.all(
-      Array.from(uniqueLVs.values()).map(async (group) => {
-        const kuCode = extractKuCode(group.parcels[0]);
-        if (!kuCode) return [];
-        const p = group.parcels.find((x) => x.lat != null && x.lng != null) || group.parcels[0];
-        const lat = p.lat;
-        const lng = p.lng;
-        const parcelNo = p.parcelNo;
-        const res = await fetch(
-          `/api/public/kataster/lv?ku=${encodeURIComponent(kuCode)}&lv=${encodeURIComponent(group.lv)}&lat=${lat}&lng=${lng}&parcel=${encodeURIComponent(parcelNo || "")}`,
-        );
-        const data = await res.json();
-        return (data?.owners || []).map((o: { meno: string; adresa: string; podiel: string }) => ({
-          ...o,
-          parcels: group.parcels,
-        }));
-      }),
-    ).then((results) => {
-      if (cancelled) return;
-      const flat = results.flat();
-      const byOwner = new Map<string, OwnerSummary>();
-      for (const item of flat) {
-        const key = item.meno;
-        if (!byOwner.has(key)) {
-          byOwner.set(key, { name: item.meno, address: item.adresa, share: item.podiel, parcelCount: 0, totalArea: 0, parcels: [] });
-        }
-        const entry = byOwner.get(key)!;
-        for (const p of item.parcels) {
-          const vymera = parseFloat(String(p.vymera || "0").replace(/\s/g, "").replace(",", "."));
-          entry.parcels.push({ parcelNo: String(p.parcelNo || "—"), vymera: String(p.vymera || "—") });
-          entry.parcelCount++;
-          if (!isNaN(vymera)) entry.totalArea += vymera;
-        }
-      }
-      setOwners(Array.from(byOwner.values()).sort((a, b) => b.totalArea - a.totalArea));
+    const groups = Array.from(uniqueLVs.values());
+    const requests: Array<{ kuCode: string; lv: string; lat: number; lng: number; parcelNo: string }> = [];
+
+    for (const group of groups) {
+      const kuCode = extractKuCode(group.parcels[0]);
+      if (!kuCode) continue;
+      const p = group.parcels.find((x) => x.lat != null && x.lng != null) || group.parcels[0];
+      requests.push({
+        kuCode,
+        lv: group.lv,
+        lat: p.lat,
+        lng: p.lng,
+        parcelNo: String(p.parcelNo || ""),
+      });
+    }
+
+    if (requests.length === 0) {
       setLoading(false);
-    }).catch(() => { if (!cancelled) { setLoading(false); } });
+      return;
+    }
+
+    (async () => {
+      try {
+        const res = await fetch("/api/public/kataster/owners-batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requests }),
+        });
+        if (cancelled) return;
+        const data = await res.json();
+        const results: Array<{ lv: string; ku: string; parcelNo: string; owners: Array<{ meno: string; adresa: string; podiel: string }> }> = data.results || [];
+
+        const byOwner = new Map<string, OwnerSummary>();
+        for (let i = 0; i < results.length; i++) {
+          const r = results[i];
+          const group = groups[i];
+          if (!r.owners) continue;
+          for (const o of r.owners) {
+            const key = o.meno;
+            if (!byOwner.has(key)) {
+              byOwner.set(key, { name: o.meno, address: o.adresa, share: o.podiel, parcelCount: 0, totalArea: 0, parcels: [] });
+            }
+            const entry = byOwner.get(key)!;
+            for (const p of group.parcels) {
+              const vymera = parseFloat(String(p.vymera || "0").replace(/\s/g, "").replace(",", "."));
+              if (!entry.parcels.some((ep) => ep.parcelNo === String(p.parcelNo))) {
+                entry.parcels.push({ parcelNo: String(p.parcelNo || "—"), vymera: String(p.vymera || "—") });
+                entry.parcelCount++;
+                if (!isNaN(vymera)) entry.totalArea += vymera;
+              }
+            }
+          }
+        }
+        if (!cancelled) {
+          setOwners(Array.from(byOwner.values()).sort((a, b) => b.totalArea - a.totalArea));
+          setLoading(false);
+        }
+      } catch {
+        if (!cancelled) setLoading(false);
+      }
+    })();
 
     return () => { cancelled = true; };
   }, [parcels]);
