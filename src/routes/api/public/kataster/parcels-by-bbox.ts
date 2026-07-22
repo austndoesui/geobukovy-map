@@ -16,7 +16,7 @@ const UPSTREAMS = [
 ];
 
 async function identifyPoint(lat: number, lng: number): Promise<Record<string, unknown>[]> {
-  const bbox = `${lng - 0.001},${lat - 0.001},${lng + 0.001},${lat + 0.001}`;
+  const bbox = `${lat - 0.001},${lng - 0.001},${lat + 0.001},${lng + 0.001}`;
   const qs = `SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo&LAYERS=5,8&QUERY_LAYERS=5,8&I=50&J=50&WIDTH=100&HEIGHT=100&BBOX=${bbox}&CRS=EPSG:4326&INFO_FORMAT=application/geo%2Bjson&FEATURE_COUNT=10`;
 
   const results = await Promise.allSettled(
