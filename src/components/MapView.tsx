@@ -196,6 +196,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
   const baseLayerRef = useRef<L.TileLayer | null>(null);
   const cadastreRef = useRef<L.TileLayer.WMS | null>(null);
   const esknOverlayRef = useRef<L.TileLayer | null>(null);
+  const uoRef = useRef<L.TileLayer | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
   const borderRef = useRef<L.Polyline | null>(null);
 
@@ -281,6 +282,27 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
       );
       esknOverlayRef.current.addTo(map);
     }
+
+    // Register E (UO) overlay — historical parcels on orthofoto
+    if (uoRef.current) {
+      map.removeLayer(uoRef.current);
+      uoRef.current = null;
+    }
+    if (base === "ortofoto") {
+      uoRef.current = L.tileLayer(
+        "https://kataster.skgeodesy.sk/eskn/rest/services/NR/uo_wmts_orto_wm/MapServer/WMTS/tile/1.0.0/NR_uo_wmts_orto_wm/default/GoogleMapsCompatible/{z}/{y}/{x}.png",
+        {
+          attribution: "© ÚGKK SR — UO",
+          minZoom: 14,
+          maxNativeZoom: 18,
+          maxZoom: 22,
+          updateWhenIdle: false,
+          keepBuffer: 8,
+          opacity: 0.6,
+        },
+      );
+      uoRef.current.addTo(map);
+    }
   }, [base]);
 
   // Blind-map mask + Slovakia outline
@@ -334,6 +356,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
   useEffect(() => {
     if (borderRef.current) borderRef.current.bringToFront();
     if (markerRef.current) markerRef.current.setZIndexOffset(1000);
+    if (uoRef.current) uoRef.current.bringToFront();
   }, [base, showCadastre]);
 
   // Search marker
