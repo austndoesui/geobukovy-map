@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { getPage, getSearchPage, closeBrowser } from "./browser.js";
 import { extractOwners } from "./extract.js";
+import { batchExtractOwners } from "./batch-extract.js";
 import { searchFolios } from "./search.js";
 
 
@@ -16,17 +17,13 @@ app.post("/api/owners/batch", async (c) => {
   const requests: Array<{ lat: number; lng: number; kuCode: string; parcelNo: string; lv: string }> = body.requests || [];
 
   if (requests.length === 0) {
-    return c.json({ error: "no requests provided" }, 400);
+    return c.json({ results: [] });
   }
 
   let page;
   try {
     page = await getPage();
-    const results = [];
-    for (const req of requests) {
-      const detail = await extractOwners(page, req.lat, req.lng, req.kuCode, req.parcelNo, req.lv);
-      results.push(detail);
-    }
+    const results = await batchExtractOwners(page, requests);
     return c.json({ results });
   } catch (err: any) {
     return c.json({ error: "batch_extraction_failed", detail: err?.message || String(err) }, 502);
