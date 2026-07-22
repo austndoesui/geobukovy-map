@@ -120,9 +120,6 @@ function AdminUsers() {
           <span className="hidden text-[12.5px] text-muted-foreground sm:inline">
             Prihlásený: <span className="font-medium text-foreground">{session.username}</span>
           </span>
-          <Link to="/admin" className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12.5px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
-            <ArrowLeft className="h-4 w-4" /> Administrácia
-          </Link>
           <button onClick={onLogout} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[12.5px] font-medium hover:bg-muted">
             <LogOut className="h-4 w-4" /> Odhlásiť
           </button>
@@ -130,6 +127,9 @@ function AdminUsers() {
       </header>
 
       <main className="mx-auto max-w-4xl p-6">
+        <Link to="/admin" className="mb-4 inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="h-3.5 w-3.5" /> Administrácia
+        </Link>
         <div className="flex items-center justify-between">
           <div>
             <h1 className="font-display text-[22px] font-semibold">Správa používateľov</h1>

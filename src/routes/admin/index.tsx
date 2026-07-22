@@ -78,9 +78,6 @@ function AdminHub() {
           <span className="hidden text-[12.5px] text-muted-foreground sm:inline">
             Prihlásený: <span className="font-medium text-foreground">{session.username}</span>
           </span>
-          <Link to="/" className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12.5px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
-            <ArrowLeft className="h-4 w-4" /> Mapa
-          </Link>
           <button onClick={onLogout} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[12.5px] font-medium hover:bg-muted">
             <LogOut className="h-4 w-4" /> Odhlásiť
           </button>
@@ -88,6 +85,9 @@ function AdminHub() {
       </header>
 
       <main className="mx-auto max-w-3xl p-6">
+        <Link to="/" className="mb-4 inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="h-3.5 w-3.5" /> Späť na mapu
+        </Link>
         <h1 className="font-display text-[22px] font-semibold">Administrácia</h1>
         <p className="mt-1 text-[13px] text-muted-foreground">Správa systému GeoBukový</p>
 
