@@ -897,8 +897,12 @@ function MultiOwnerPanel({ parcels, onClear }: { parcels: Record<string, unknown
       Array.from(uniqueLVs.values()).map(async (group) => {
         const kuCode = extractKuCode(group.parcels[0]);
         if (!kuCode) return [];
+        const p = group.parcels.find((x) => x.lat != null && x.lng != null) || group.parcels[0];
+        const lat = p.lat;
+        const lng = p.lng;
+        const parcelNo = p.parcelNo;
         const res = await fetch(
-          `/api/public/kataster/lv?ku=${encodeURIComponent(kuCode)}&lv=${encodeURIComponent(group.lv)}`,
+          `/api/public/kataster/lv?ku=${encodeURIComponent(kuCode)}&lv=${encodeURIComponent(group.lv)}&lat=${lat}&lng=${lng}&parcel=${encodeURIComponent(parcelNo || "")}`,
         );
         const data = await res.json();
         return (data?.owners || []).map((o: { meno: string; adresa: string; podiel: string }) => ({
