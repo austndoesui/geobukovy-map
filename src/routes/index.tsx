@@ -16,7 +16,6 @@ import {
   LogIn,
   ExternalLink,
   Square,
-  Users,
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
@@ -956,57 +955,40 @@ function MultiOwnerPanel({ parcels, onClear }: { parcels: Record<string, unknown
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto">
-          <div className="px-4 pb-2 pt-3">
-            <div className="mb-2 flex items-center gap-2">
-              <div className="h-3 w-0.5 shrink-0 rounded-full bg-muted-foreground/20" />
-              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Vlastníci</span>
-            </div>
-            <div className="space-y-1">
-              {owners.map((o, i) => (
-                <div key={i} className="rounded-md border border-border">
-                  <button
-                    onClick={() => setExpanded(expanded === i ? null : i)}
-                    className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/40"
-                  >
-                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
-                      <Users className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-[13px] font-medium">{o.name}</div>
-                      <div className="text-[11px] text-muted-foreground">
-                        {o.parcelCount} parciel · {o.totalArea.toLocaleString("sk-SK", { maximumFractionDigits: 0 })} m²
+          {owners.map((o, i) => (
+            <div key={i}>
+              <button
+                onClick={() => setExpanded(expanded === i ? null : i)}
+                className={`flex w-full items-center gap-2 px-4 py-2 text-left text-[13px] hover:bg-muted/40 ${
+                  expanded === i ? "bg-muted/20" : ""
+                }`}
+              >
+                <span className="w-6 shrink-0 font-mono text-muted-foreground">{i + 1}.</span>
+                <span className="min-w-0 flex-1 truncate font-medium">{o.name}</span>
+                <span className="shrink-0 text-muted-foreground">{o.parcelCount} parc.</span>
+                <span className="shrink-0 font-mono text-muted-foreground">
+                  {o.totalArea.toLocaleString("sk-SK", { maximumFractionDigits: 0 })} m²
+                </span>
+                <span className="shrink-0 text-muted-foreground">
+                  {expanded === i ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                </span>
+              </button>
+              {expanded === i && (
+                <div className="border-b border-border px-10 pb-2 pt-1 text-[12px] text-muted-foreground">
+                  {o.address && <div className="py-0.5">{o.address}</div>}
+                  {o.share && <div className="py-0.5">Podiel: {o.share}</div>}
+                  <div className="mt-1 space-y-0.5">
+                    {o.parcels.map((p, j) => (
+                      <div key={j} className="flex items-center justify-between rounded-sm bg-muted/30 px-2 py-0.5">
+                        <span>{p.parcelNo}</span>
+                        <span>{p.vymera !== "—" ? `${p.vymera} m²` : "—"}</span>
                       </div>
-                    </div>
-                    <div className="text-muted-foreground">
-                      {expanded === i ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                    </div>
-                  </button>
-                  {expanded === i && (
-                    <div className="border-t border-border px-3 py-2">
-                      {o.address && (
-                        <div className="mb-1.5 text-[11px] text-muted-foreground">
-                          Adresa: {o.address}
-                        </div>
-                      )}
-                      {o.share && (
-                        <div className="mb-1.5 text-[11px] text-muted-foreground">
-                          Podiel: {o.share}
-                        </div>
-                      )}
-                      <div className="space-y-0.5">
-                        {o.parcels.map((p, j) => (
-                          <div key={j} className="flex items-center justify-between rounded-sm bg-muted/30 px-2 py-1 text-[11.5px]">
-                            <span>{p.parcelNo}</span>
-                            <span className="text-muted-foreground">{p.vymera !== "—" ? `${p.vymera} m²` : "—"}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                    ))}
+                  </div>
                 </div>
-              ))}
+              )}
             </div>
-          </div>
+          ))}
         </div>
       )}
     </div>
@@ -1014,6 +996,8 @@ function MultiOwnerPanel({ parcels, onClear }: { parcels: Record<string, unknown
 }
 
 function extractKuCode(props: Record<string, unknown>): string | null {
+  const direct = props.kuCode ?? props.ku_kod ?? props.katu;
+  if (direct && String(direct).trim() !== "") return String(direct);
   for (const [key, val] of Object.entries(props)) {
     const k = key.toLowerCase();
     if (/kód katastrálneho|katu|ku_kod|kód k\.ú\./.test(k) && val != null && String(val).trim() !== "") {

@@ -111,6 +111,7 @@ export const Route = createFileRoute("/api/public/kataster/parcels-by-bbox")({
                 lv: parsed.lv,
                 vymera: parsed.vymera,
                 druh: parsed.druh,
+                kuCode: parsed.kuCode,
                 lat: props.lat ?? props.LAT ?? props.y ?? null,
                 lng: props.lon ?? props.LON ?? props.x ?? null,
               });

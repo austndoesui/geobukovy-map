@@ -206,6 +206,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
   const selRectRef = useRef<L.Rectangle | null>(null);
   const selStartRef = useRef<L.LatLng | null>(null);
   const selModeRef = useRef(false);
+  const ignoreClickRef = useRef(false);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -228,6 +229,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
     map.on("mousemove", (e) => onCoords?.(e.latlng.lat, e.latlng.lng));
     map.on("click", (e) => {
       if (selModeRef.current) return;
+      if (ignoreClickRef.current) { ignoreClickRef.current = false; return; }
       identifyParcel(map, e.latlng);
     });
 
@@ -244,8 +246,19 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
     parcelSelectCallback = onParcelSelect ?? null;
   }, [onParcelSelect]);
 
-  // Keep selection mode ref in sync
-  useEffect(() => { selModeRef.current = !!selectionMode; }, [selectionMode]);
+  // Keep selection mode ref in sync and toggle dragging
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    selModeRef.current = !!selectionMode;
+    if (selectionMode) {
+      map.getContainer().style.cursor = "crosshair";
+      map.dragging.disable();
+    } else {
+      map.getContainer().style.cursor = "";
+      map.dragging.enable();
+    }
+  }, [selectionMode]);
 
   // Rectangle selection mode
   useEffect(() => {
@@ -278,6 +291,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
       const rect = selRectRef.current;
       selStartRef.current = null;
       selRectRef.current = null;
+      ignoreClickRef.current = true;
       onAreaSelect?.({
         south: bounds.getSouth(),
         west: bounds.getWest(),
@@ -291,9 +305,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
     map.on("mouseup", onMouseUp);
 
     if (selectionMode) {
-      map.getContainer().style.cursor = "crosshair";
     } else {
-      map.getContainer().style.cursor = "";
       if (selRectRef.current) { map.removeLayer(selRectRef.current); selRectRef.current = null; }
       selStartRef.current = null;
     }
