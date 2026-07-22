@@ -433,13 +433,15 @@ function Portal() {
             <LogIn className="h-4 w-4 rotate-180" />
             <span className="hidden sm:inline">Odhlásiť</span>
           </button>
-          <Link
-            to="/admin"
-            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-[12.5px] font-medium text-primary-foreground hover:opacity-90"
-          >
-            <Shield className="h-4 w-4" />
-            <span className="hidden sm:inline">Admin</span>
-          </Link>
+          {session.role === "admin" && (
+            <Link
+              to="/admin"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-[12.5px] font-medium text-primary-foreground hover:opacity-90"
+            >
+              <Shield className="h-4 w-4" />
+              <span className="hidden sm:inline">Admin</span>
+            </Link>
+          )}
         </div>
       </header>
 
