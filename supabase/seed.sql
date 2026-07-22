@@ -1,0 +1,5 @@
+-- 1. Run the migration first: supabase/migrations/00001_create_users_sessions.sql
+-- 2. Create the root admin by running the dev server and visiting:
+--    curl -X POST http://localhost:3000/api/auth/setup
+--    This will create the admin if no users exist.
+--    Or insert manually with a known hash (see src/lib/auth.ts for hashPassword).

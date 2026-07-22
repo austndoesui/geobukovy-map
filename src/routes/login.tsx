@@ -18,11 +18,11 @@ function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const r = login(username, password);
+    const r = await login(username, password);
     setBusy(false);
     if (!r.ok) {
       setError(r.error ?? "Chyba prihlásenia.");

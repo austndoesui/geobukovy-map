@@ -12,6 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiAuthSetupRouteImport } from './routes/api/auth/setup'
+import { Route as ApiAuthMeRouteImport } from './routes/api/auth/me'
+import { Route as ApiAuthLogoutRouteImport } from './routes/api/auth/logout'
+import { Route as ApiAuthLoginRouteImport } from './routes/api/auth/login'
+import { Route as ApiAuthAdminIndexRouteImport } from './routes/api/auth/admin/index'
 import { Route as ApiPublicKatasterSearchRouteImport } from './routes/api/public/kataster/search'
 import { Route as ApiPublicKatasterLvRouteImport } from './routes/api/public/kataster/lv'
 import { Route as ApiPublicKatasterIdentifyRouteImport } from './routes/api/public/kataster/identify'
@@ -29,6 +34,31 @@ const AdminRoute = AdminRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthSetupRoute = ApiAuthSetupRouteImport.update({
+  id: '/api/auth/setup',
+  path: '/api/auth/setup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthMeRoute = ApiAuthMeRouteImport.update({
+  id: '/api/auth/me',
+  path: '/api/auth/me',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthLogoutRoute = ApiAuthLogoutRouteImport.update({
+  id: '/api/auth/logout',
+  path: '/api/auth/logout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthLoginRoute = ApiAuthLoginRouteImport.update({
+  id: '/api/auth/login',
+  path: '/api/auth/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthAdminIndexRoute = ApiAuthAdminIndexRouteImport.update({
+  id: '/api/auth/admin/',
+  path: '/api/auth/admin/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicKatasterSearchRoute = ApiPublicKatasterSearchRouteImport.update({
@@ -52,26 +82,41 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/login': typeof LoginRoute
+  '/api/auth/login': typeof ApiAuthLoginRoute
+  '/api/auth/logout': typeof ApiAuthLogoutRoute
+  '/api/auth/me': typeof ApiAuthMeRoute
+  '/api/auth/setup': typeof ApiAuthSetupRoute
   '/api/public/kataster/identify': typeof ApiPublicKatasterIdentifyRoute
   '/api/public/kataster/lv': typeof ApiPublicKatasterLvRoute
   '/api/public/kataster/search': typeof ApiPublicKatasterSearchRoute
+  '/api/auth/admin/': typeof ApiAuthAdminIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/login': typeof LoginRoute
+  '/api/auth/login': typeof ApiAuthLoginRoute
+  '/api/auth/logout': typeof ApiAuthLogoutRoute
+  '/api/auth/me': typeof ApiAuthMeRoute
+  '/api/auth/setup': typeof ApiAuthSetupRoute
   '/api/public/kataster/identify': typeof ApiPublicKatasterIdentifyRoute
   '/api/public/kataster/lv': typeof ApiPublicKatasterLvRoute
   '/api/public/kataster/search': typeof ApiPublicKatasterSearchRoute
+  '/api/auth/admin': typeof ApiAuthAdminIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/login': typeof LoginRoute
+  '/api/auth/login': typeof ApiAuthLoginRoute
+  '/api/auth/logout': typeof ApiAuthLogoutRoute
+  '/api/auth/me': typeof ApiAuthMeRoute
+  '/api/auth/setup': typeof ApiAuthSetupRoute
   '/api/public/kataster/identify': typeof ApiPublicKatasterIdentifyRoute
   '/api/public/kataster/lv': typeof ApiPublicKatasterLvRoute
   '/api/public/kataster/search': typeof ApiPublicKatasterSearchRoute
+  '/api/auth/admin/': typeof ApiAuthAdminIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -79,34 +124,54 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/login'
+    | '/api/auth/login'
+    | '/api/auth/logout'
+    | '/api/auth/me'
+    | '/api/auth/setup'
     | '/api/public/kataster/identify'
     | '/api/public/kataster/lv'
     | '/api/public/kataster/search'
+    | '/api/auth/admin/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/admin'
     | '/login'
+    | '/api/auth/login'
+    | '/api/auth/logout'
+    | '/api/auth/me'
+    | '/api/auth/setup'
     | '/api/public/kataster/identify'
     | '/api/public/kataster/lv'
     | '/api/public/kataster/search'
+    | '/api/auth/admin'
   id:
     | '__root__'
     | '/'
     | '/admin'
     | '/login'
+    | '/api/auth/login'
+    | '/api/auth/logout'
+    | '/api/auth/me'
+    | '/api/auth/setup'
     | '/api/public/kataster/identify'
     | '/api/public/kataster/lv'
     | '/api/public/kataster/search'
+    | '/api/auth/admin/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
   LoginRoute: typeof LoginRoute
+  ApiAuthLoginRoute: typeof ApiAuthLoginRoute
+  ApiAuthLogoutRoute: typeof ApiAuthLogoutRoute
+  ApiAuthMeRoute: typeof ApiAuthMeRoute
+  ApiAuthSetupRoute: typeof ApiAuthSetupRoute
   ApiPublicKatasterIdentifyRoute: typeof ApiPublicKatasterIdentifyRoute
   ApiPublicKatasterLvRoute: typeof ApiPublicKatasterLvRoute
   ApiPublicKatasterSearchRoute: typeof ApiPublicKatasterSearchRoute
+  ApiAuthAdminIndexRoute: typeof ApiAuthAdminIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -130,6 +195,41 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/setup': {
+      id: '/api/auth/setup'
+      path: '/api/auth/setup'
+      fullPath: '/api/auth/setup'
+      preLoaderRoute: typeof ApiAuthSetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/me': {
+      id: '/api/auth/me'
+      path: '/api/auth/me'
+      fullPath: '/api/auth/me'
+      preLoaderRoute: typeof ApiAuthMeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/logout': {
+      id: '/api/auth/logout'
+      path: '/api/auth/logout'
+      fullPath: '/api/auth/logout'
+      preLoaderRoute: typeof ApiAuthLogoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/login': {
+      id: '/api/auth/login'
+      path: '/api/auth/login'
+      fullPath: '/api/auth/login'
+      preLoaderRoute: typeof ApiAuthLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/admin/': {
+      id: '/api/auth/admin/'
+      path: '/api/auth/admin'
+      fullPath: '/api/auth/admin/'
+      preLoaderRoute: typeof ApiAuthAdminIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/kataster/search': {
@@ -160,9 +260,14 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
   LoginRoute: LoginRoute,
+  ApiAuthLoginRoute: ApiAuthLoginRoute,
+  ApiAuthLogoutRoute: ApiAuthLogoutRoute,
+  ApiAuthMeRoute: ApiAuthMeRoute,
+  ApiAuthSetupRoute: ApiAuthSetupRoute,
   ApiPublicKatasterIdentifyRoute: ApiPublicKatasterIdentifyRoute,
   ApiPublicKatasterLvRoute: ApiPublicKatasterLvRoute,
   ApiPublicKatasterSearchRoute: ApiPublicKatasterSearchRoute,
+  ApiAuthAdminIndexRoute: ApiAuthAdminIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

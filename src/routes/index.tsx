@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import logo from "@/assets/logo-removebg-preview.png";
 import type { MapMarker, MapViewHandle, ParcelInfo } from "@/components/MapView";
-import { getSession, type Session } from "@/lib/auth";
+import { checkSession, logout, type Session } from "@/lib/auth";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -96,11 +96,17 @@ function Portal() {
   }, []);
 
   const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     setMounted(true);
-    setSession(getSession());
-  }, []);
+    checkSession().then((s) => {
+      setSession(s);
+      setAuthLoading(false);
+      if (!s) navigate({ to: "/login" });
+    });
+  }, [navigate]);
 
   const runSearch = useCallback(async (q: string) => {
     if (q.trim().length < 2) {
@@ -324,6 +330,16 @@ function Portal() {
     mapRef.current?.clearParcel();
   }, []);
 
+  if (authLoading) {
+    return (
+      <div className="absolute inset-0 grid place-items-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!session) return null;
+
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-background text-foreground">
       {/* Top bar */}
@@ -408,13 +424,21 @@ function Portal() {
           </div>
         </div>
 
-        <div className="flex h-full shrink-0 items-center px-2">
+        <div className="flex h-full shrink-0 items-center gap-1.5 px-2">
+          <button
+            onClick={async () => { await logout(); navigate({ to: "/login" }); }}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 text-[12.5px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+            title="Odhlásiť"
+          >
+            <LogIn className="h-4 w-4 rotate-180" />
+            <span className="hidden sm:inline">Odhlásiť</span>
+          </button>
           <Link
-            to={session ? "/admin" : "/login"}
+            to="/admin"
             className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-[12.5px] font-medium text-primary-foreground hover:opacity-90"
           >
-            {session ? <Shield className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
-            <span className="hidden sm:inline">{session ? "Admin" : "Prihlásenie"}</span>
+            <Shield className="h-4 w-4" />
+            <span className="hidden sm:inline">Admin</span>
           </Link>
         </div>
       </header>

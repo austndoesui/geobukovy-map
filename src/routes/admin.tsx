@@ -1,15 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ArrowLeft, LogOut, Plus, Shield, Trash2, UserIcon } from "lucide-react";
-import {
-  createUser,
-  deleteUser,
-  getSession,
-  listUsers,
-  logout,
-  type Account,
-  type Session,
-} from "@/lib/auth";
+import { checkSession, listUsers, createUser, deleteUser, logout, type Session } from "@/lib/auth";
 import logo from "@/assets/logo-removebg-preview.png";
 
 export const Route = createFileRoute("/admin")({
@@ -20,29 +12,35 @@ export const Route = createFileRoute("/admin")({
 function AdminPage() {
   const navigate = useNavigate();
   const [session, setSession] = useState<Session | null>(null);
-  const [users, setUsers] = useState<Account[]>([]);
+  const [users, setUsers] = useState<{ id: string; username: string; role: string; created_at: string }[]>([]);
   const [u, setU] = useState("");
   const [p, setP] = useState("");
   const [role, setRole] = useState<"admin" | "user">("user");
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   useEffect(() => {
-    const s = getSession();
-    if (!s) {
-      navigate({ to: "/login" });
-      return;
-    }
-    setSession(s);
-    setUsers(listUsers());
+    checkSession().then((s) => {
+      if (!s) {
+        navigate({ to: "/login" });
+        return;
+      }
+      setSession(s);
+      if (s.role === "admin") {
+        listUsers(s).then(setUsers);
+      }
+    });
   }, [navigate]);
 
   if (!session) return null;
 
-  const refresh = () => setUsers(listUsers());
+  const refresh = async () => {
+    const users = await listUsers(session);
+    setUsers(users);
+  };
 
-  const onCreate = (e: React.FormEvent) => {
+  const onCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    const r = createUser(u, p, role);
+    const r = await createUser(session, u, p, role);
     if (!r.ok) {
       setMsg({ kind: "err", text: r.error ?? "Chyba" });
       return;
@@ -54,16 +52,16 @@ function AdminPage() {
     refresh();
   };
 
-  const onDelete = (name: string) => {
+  const onDelete = async (userId: string, name: string) => {
     if (!confirm(`Naozaj odstrániť účet „${name}"?`)) return;
-    const r = deleteUser(name);
+    const r = await deleteUser(session, userId);
     if (!r.ok) setMsg({ kind: "err", text: r.error ?? "Chyba" });
     else setMsg({ kind: "ok", text: "Účet bol odstránený." });
     refresh();
   };
 
-  const onLogout = () => {
-    logout();
+  const onLogout = async () => {
+    await logout();
     navigate({ to: "/" });
   };
 
@@ -106,7 +104,7 @@ function AdminPage() {
           </header>
           <ul className="divide-y divide-border">
             {users.map((acc) => (
-              <li key={acc.username} className="flex items-center gap-3 px-5 py-3">
+              <li key={acc.id} className="flex items-center gap-3 px-5 py-3">
                 <div className="grid h-9 w-9 place-items-center rounded-full bg-accent text-accent-foreground">
                   {acc.role === "admin" ? <Shield className="h-4 w-4" /> : <UserIcon className="h-4 w-4" />}
                 </div>
@@ -114,11 +112,11 @@ function AdminPage() {
                   <div className="truncate text-[13.5px] font-medium">{acc.username}</div>
                   <div className="text-[11px] text-muted-foreground">
                     {acc.role === "admin" ? "Administrátor" : "Používateľ"} ·{" "}
-                    {new Date(acc.createdAt).toLocaleDateString("sk-SK")}
+                    {new Date(acc.created_at).toLocaleDateString("sk-SK")}
                   </div>
                 </div>
                 <button
-                  onClick={() => onDelete(acc.username)}
+                  onClick={() => onDelete(acc.id, acc.username)}
                   disabled={acc.username === "Tomáš Bukový"}
                   className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                   title={acc.username === "Tomáš Bukový" ? "Hlavného administrátora nemožno odstrániť" : "Odstrániť"}
