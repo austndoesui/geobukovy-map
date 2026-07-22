@@ -15,6 +15,10 @@ import {
   Shield,
   LogIn,
   ExternalLink,
+  Square,
+  Users,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import logo from "@/assets/logo-removebg-preview.png";
 import type { MapMarker, MapViewHandle, ParcelInfo } from "@/components/MapView";
@@ -76,6 +80,10 @@ function Portal() {
   const [selectedParcel, setSelectedParcel] = useState<ParcelInfo | null>(null);
   const selectedParcelRef = useRef(selectedParcel);
   selectedParcelRef.current = selectedParcel;
+
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [multiParcels, setMultiParcels] = useState<Record<string, unknown>[]>([]);
+  const [multiLoading, setMultiLoading] = useState(false);
 
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<Hit[] | null>(null);
@@ -327,7 +335,26 @@ function Portal() {
 
   const backToSearch = useCallback(() => {
     setSelectedParcel(null);
+    setMultiParcels([]);
     mapRef.current?.clearParcel();
+  }, []);
+
+  const handleAreaSelect = useCallback(async (bbox: { south: number; west: number; north: number; east: number }) => {
+    setMultiLoading(true);
+    setSelectionMode(false);
+    try {
+      const res = await fetch(
+        `/api/public/kataster/parcels-by-bbox?south=${bbox.south}&west=${bbox.west}&north=${bbox.north}&east=${bbox.east}`,
+      );
+      const data = await res.json();
+      setMultiParcels(data.parcels || []);
+      setSelectedParcel(null);
+      setMarker(null);
+    } catch {
+      setMultiParcels([]);
+    } finally {
+      setMultiLoading(false);
+    }
   }, []);
 
   if (authLoading) {
@@ -447,14 +474,24 @@ function Portal() {
 
       {/* Sidebar — pure detail panel */}
       <aside className="absolute left-0 top-14 bottom-0 z-[900] flex w-[340px] flex-col border-r border-border bg-surface">
-        {selectedParcel ? (
+        {multiParcels.length > 0 ? (
+          <MultiOwnerPanel parcels={multiParcels} onClear={backToSearch} />
+        ) : selectedParcel ? (
           <ParcelDetail info={selectedParcel} onClear={backToSearch} />
+        ) : multiLoading ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">Vyhľadávam parcely v oblasti…</p>
+          </div>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
             <MapPin className="mb-3 h-8 w-8 text-muted-foreground/20" strokeWidth={1.5} />
             <p className="text-sm font-medium text-foreground">Vyberte parcelu</p>
             <p className="mt-1.5 max-w-[200px] text-[12px] leading-relaxed text-muted-foreground">
               Kliknite na mapu alebo vyhľadajte parcelu v hornom vyhľadávaní.
+            </p>
+            <p className="mt-4 max-w-[200px] text-[11px] text-muted-foreground">
+              Pre výber viacerých parciel použite tlačidlo <Square className="inline h-3 w-3" /> v pravom paneli a ťahaním myši označte oblasť.
             </p>
           </div>
         )}
@@ -470,6 +507,8 @@ function Portal() {
               marker={marker}
               onCoords={(lat, lng) => setCoords({ lat, lng })}
               onParcelSelect={handleParcelSelect}
+              selectionMode={selectionMode}
+              onAreaSelect={handleAreaSelect}
             />
           </Suspense>
         ) : (
@@ -479,6 +518,18 @@ function Portal() {
 
       {/* Right-side controls */}
       <div className="absolute top-[60px] right-3 z-[997] flex flex-col items-end gap-1">
+        <button
+          onClick={() => setSelectionMode((v) => !v)}
+          className={`flex h-10 w-10 items-center justify-center rounded-md border transition-colors ${
+            selectionMode
+              ? "border-primary bg-primary text-primary-foreground"
+              : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+          title={selectionMode ? "Ukončiť výber" : "Výber viacerých parciel"}
+          aria-label="Výber viacerých parciel"
+        >
+          <Square className="h-[18px] w-[18px]" />
+        </button>
         <button
           onClick={() => mapRef.current?.zoomIn()}
           className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -812,6 +863,168 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
       <div className={`mt-px text-[13px] text-foreground ${mono ? "font-mono" : ""}`}>{value}</div>
     </div>
   );
+}
+
+interface OwnerSummary {
+  name: string;
+  address: string;
+  share: string;
+  parcelCount: number;
+  totalArea: number;
+  parcels: { parcelNo: string; vymera: string }[];
+}
+
+function MultiOwnerPanel({ parcels, onClear }: { parcels: Record<string, unknown>[]; onClear: () => void }) {
+  const [owners, setOwners] = useState<OwnerSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<number | null>(null);
+
+  // Group parcels by unique (kuCode, lv) for owner lookup
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+
+    const uniqueLVs = new Map<string, { ku: string; lv: string; parcels: Record<string, unknown>[] }>();
+    for (const p of parcels) {
+      const lv = String(p.lv || "");
+      const ku = String(p.ku || "");
+      if (!lv || !ku) continue;
+      const key = `${ku}_${lv}`;
+      if (!uniqueLVs.has(key)) uniqueLVs.set(key, { ku, lv, parcels: [] });
+      uniqueLVs.get(key)!.parcels.push(p);
+    }
+
+    Promise.all(
+      Array.from(uniqueLVs.values()).map(async (group) => {
+        const kuCode = extractKuCode(group.parcels[0]);
+        if (!kuCode) return [];
+        const res = await fetch(
+          `/api/public/kataster/lv?ku=${encodeURIComponent(kuCode)}&lv=${encodeURIComponent(group.lv)}`,
+        );
+        const data = await res.json();
+        return (data?.owners || []).map((o: { meno: string; adresa: string; podiel: string }) => ({
+          ...o,
+          parcels: group.parcels,
+        }));
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      const flat = results.flat();
+      const byOwner = new Map<string, OwnerSummary>();
+      for (const item of flat) {
+        const key = item.meno;
+        if (!byOwner.has(key)) {
+          byOwner.set(key, { name: item.meno, address: item.adresa, share: item.podiel, parcelCount: 0, totalArea: 0, parcels: [] });
+        }
+        const entry = byOwner.get(key)!;
+        for (const p of item.parcels) {
+          const vymera = parseFloat(String(p.vymera || "0").replace(/\s/g, "").replace(",", "."));
+          entry.parcels.push({ parcelNo: String(p.parcelNo || "—"), vymera: String(p.vymera || "—") });
+          entry.parcelCount++;
+          if (!isNaN(vymera)) entry.totalArea += vymera;
+        }
+      }
+      setOwners(Array.from(byOwner.values()).sort((a, b) => b.totalArea - a.totalArea));
+      setLoading(false);
+    }).catch(() => { if (!cancelled) { setLoading(false); } });
+
+    return () => { cancelled = true; };
+  }, [parcels]);
+
+  const totalParcels = parcels.length;
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div>
+          <h2 className="text-[14px] font-semibold">Výber viacerých parciel</h2>
+          <p className="text-[11px] text-muted-foreground">{totalParcels} parciel</p>
+        </div>
+        <button onClick={onClear} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Načítavam vlastníkov…</p>
+        </div>
+      ) : owners.length === 0 ? (
+        <div className="flex flex-1 items-center justify-center px-8 text-center">
+          <p className="text-[13px] text-muted-foreground">Nepodarilo sa načítať údaje o vlastníkoch.</p>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto">
+          <div className="px-4 pb-2 pt-3">
+            <div className="mb-2 flex items-center gap-2">
+              <div className="h-3 w-0.5 shrink-0 rounded-full bg-muted-foreground/20" />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Vlastníci</span>
+            </div>
+            <div className="space-y-1">
+              {owners.map((o, i) => (
+                <div key={i} className="rounded-md border border-border">
+                  <button
+                    onClick={() => setExpanded(expanded === i ? null : i)}
+                    className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/40"
+                  >
+                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                      <Users className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[13px] font-medium">{o.name}</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {o.parcelCount} parciel · {o.totalArea.toLocaleString("sk-SK", { maximumFractionDigits: 0 })} m²
+                      </div>
+                    </div>
+                    <div className="text-muted-foreground">
+                      {expanded === i ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    </div>
+                  </button>
+                  {expanded === i && (
+                    <div className="border-t border-border px-3 py-2">
+                      {o.address && (
+                        <div className="mb-1.5 text-[11px] text-muted-foreground">
+                          Adresa: {o.address}
+                        </div>
+                      )}
+                      {o.share && (
+                        <div className="mb-1.5 text-[11px] text-muted-foreground">
+                          Podiel: {o.share}
+                        </div>
+                      )}
+                      <div className="space-y-0.5">
+                        {o.parcels.map((p, j) => (
+                          <div key={j} className="flex items-center justify-between rounded-sm bg-muted/30 px-2 py-1 text-[11.5px]">
+                            <span>{p.parcelNo}</span>
+                            <span className="text-muted-foreground">{p.vymera !== "—" ? `${p.vymera} m²` : "—"}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function extractKuCode(props: Record<string, unknown>): string | null {
+  for (const [key, val] of Object.entries(props)) {
+    const k = key.toLowerCase();
+    if (/kód katastrálneho|katu|ku_kod|kód k\.ú\./.test(k) && val != null && String(val).trim() !== "") {
+      return String(val);
+    }
+  }
+  for (const val of Object.values(props)) {
+    const s = String(val ?? "").trim();
+    if (/^\d{6}$/.test(s)) return s;
+  }
+  return null;
 }
 
 function BaseTile({ label, active, onClick, tileKey }: { label: string; active: boolean; onClick: () => void; tileKey: string }) {

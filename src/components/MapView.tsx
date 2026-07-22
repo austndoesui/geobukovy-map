@@ -37,6 +37,8 @@ interface MapViewProps {
   marker?: MapMarker | null;
   onCoords?: (lat: number, lng: number) => void;
   onParcelSelect?: (info: ParcelInfo) => void;
+  selectionMode?: boolean;
+  onAreaSelect?: (bbox: { south: number; west: number; north: number; east: number }) => void;
 }
 
 const DEFAULT_ICON = L.icon({
@@ -190,6 +192,8 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
   marker,
   onCoords,
   onParcelSelect,
+  selectionMode,
+  onAreaSelect,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -199,6 +203,9 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
   const uoRef = useRef<L.TileLayer | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
   const borderRef = useRef<L.Polyline | null>(null);
+  const selRectRef = useRef<L.Rectangle | null>(null);
+  const selStartRef = useRef<L.LatLng | null>(null);
+  const selModeRef = useRef(false);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -219,7 +226,10 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
     L.control.scale({ position: "bottomleft", imperial: false, maxWidth: 160 }).addTo(map);
 
     map.on("mousemove", (e) => onCoords?.(e.latlng.lat, e.latlng.lng));
-    map.on("click", (e) => identifyParcel(map, e.latlng));
+    map.on("click", (e) => {
+      if (selModeRef.current) return;
+      identifyParcel(map, e.latlng);
+    });
 
     return () => {
       parcelSelectCallback = null;
@@ -233,6 +243,67 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
   useEffect(() => {
     parcelSelectCallback = onParcelSelect ?? null;
   }, [onParcelSelect]);
+
+  // Keep selection mode ref in sync
+  useEffect(() => { selModeRef.current = !!selectionMode; }, [selectionMode]);
+
+  // Rectangle selection mode
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const onMouseDown = (e: L.LeafletMouseEvent) => {
+      if (!selectionMode) return;
+      selStartRef.current = e.latlng;
+      if (selRectRef.current) { map.removeLayer(selRectRef.current); selRectRef.current = null; }
+      selRectRef.current = L.rectangle([e.latlng, e.latlng], {
+        color: "#3b82f6",
+        weight: 2,
+        fillColor: "#3b82f6",
+        fillOpacity: 0.08,
+        dashArray: "6 4",
+        interactive: false,
+      }).addTo(map);
+    };
+
+    const onMouseMove = (e: L.LeafletMouseEvent) => {
+      if (!selStartRef.current || !selRectRef.current) return;
+      const bounds = L.latLngBounds(selStartRef.current, e.latlng);
+      selRectRef.current.setBounds(bounds);
+    };
+
+    const onMouseUp = () => {
+      if (!selStartRef.current || !selRectRef.current) return;
+      const bounds = selRectRef.current.getBounds();
+      const rect = selRectRef.current;
+      selStartRef.current = null;
+      selRectRef.current = null;
+      onAreaSelect?.({
+        south: bounds.getSouth(),
+        west: bounds.getWest(),
+        north: bounds.getNorth(),
+        east: bounds.getEast(),
+      });
+    };
+
+    map.on("mousedown", onMouseDown);
+    map.on("mousemove", onMouseMove);
+    map.on("mouseup", onMouseUp);
+
+    if (selectionMode) {
+      map.getContainer().style.cursor = "crosshair";
+    } else {
+      map.getContainer().style.cursor = "";
+      if (selRectRef.current) { map.removeLayer(selRectRef.current); selRectRef.current = null; }
+      selStartRef.current = null;
+    }
+
+    return () => {
+      map.off("mousedown", onMouseDown);
+      map.off("mousemove", onMouseMove);
+      map.off("mouseup", onMouseUp);
+    };
+  }, [selectionMode, onAreaSelect]);
 
   useImperativeHandle(ref, () => ({
     zoomIn: () => mapRef.current?.zoomIn(),
