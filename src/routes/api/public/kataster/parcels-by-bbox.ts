@@ -60,7 +60,7 @@ function parseProps(props: Record<string, unknown>) {
     lv: pick("list vlastníctva", "listu vlastníctva", "číslo listu", "cislo_lv", "list vlast"),
     vymera: pick("vymera", "výmera"),
     druh: pick("druh pozemku", "druh_pozemku", "druh"),
-    kuCode: pick("kód katastrálneho", "kód_ku", "katu", "ku_kod"),
+    kuCode: pick("kód katastrálneho", "kód_ku", "katu", "ku_kod", "kod_katastra", "kod_katastralneho", "kod_ku", "kodu"),
   };
 }
 

@@ -366,13 +366,16 @@ export const Route = createFileRoute("/api/public/kataster/search")({
                 if (dc) kuCode = dc;
               }
 
+              const attrs: Record<string, string> = {};
+              if (ku) attrs["Katastrálne územie"] = ku;
+              if (kuCode) attrs["Kód katastrálneho územia"] = kuCode;
               results.push({
                 lat: zr.lat, lng: zr.lng,
                 label: zr.text,
                 sublabel: okres,
                 parcelNo, ku, kuCode, lvNumber: "",
                 source: "zbgis",
-                attributes: ku ? { "Katastrálne územie": ku } : undefined,
+                attributes: Object.keys(attrs).length > 0 ? attrs : undefined,
               });
             }
 

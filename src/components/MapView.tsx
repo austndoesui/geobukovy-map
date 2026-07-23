@@ -290,7 +290,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
       const bounds = selRectRef.current.getBounds();
       const rect = selRectRef.current;
       selStartRef.current = null;
-      selRectRef.current = null;
+      rect.setStyle({ color: "#3b82f6", weight: 2, dashArray: undefined });
       ignoreClickRef.current = true;
       onAreaSelect?.({
         south: bounds.getSouth(),

@@ -15,7 +15,7 @@ import {
   Shield,
   LogIn,
   ExternalLink,
-  Square,
+  Crop,
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
@@ -46,14 +46,6 @@ const MapView = lazy(() => import("@/components/MapView"));
 
 type BaseLayer = "osm" | "satellite" | "topo" | "ortofoto";
 
-interface PlaceHit {
-  kind: "place";
-  id: string;
-  lat: number;
-  lng: number;
-  title: string;
-  subtitle: string;
-}
 interface ParcelHit {
   kind: "parcel";
   id: string;
@@ -64,7 +56,7 @@ interface ParcelHit {
   layerName: string;
   rawAttributes?: Record<string, unknown>;
 }
-type Hit = PlaceHit | ParcelHit;
+type Hit = ParcelHit;
 
 const PARCEL_TOKEN = /\b\d{1,6}(?:\s*[/-]\s*\d{1,4})?\b/;
 
@@ -83,7 +75,6 @@ function Portal() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [multiParcels, setMultiParcels] = useState<Record<string, unknown>[]>([]);
   const [multiLoading, setMultiLoading] = useState(false);
-
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -125,34 +116,7 @@ function Portal() {
     abortRef.current = ctrl;
     setSearching(true);
 
-    const looksLikeParcel = PARCEL_TOKEN.test(q);
-
-    const placesPromise = (async () => {
-      try {
-        const url = new URL("https://nominatim.openstreetmap.org/search");
-        url.searchParams.set("q", q);
-        url.searchParams.set("format", "json");
-        url.searchParams.set("addressdetails", "1");
-        url.searchParams.set("limit", "6");
-        url.searchParams.set("countrycodes", "sk");
-        url.searchParams.set("accept-language", "sk");
-        const res = await fetch(url.toString(), { signal: ctrl.signal });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const data: any[] = await res.json();
-        return data.map<PlaceHit>((h) => ({
-          kind: "place",
-          id: `p-${h.place_id}`,
-          lat: parseFloat(h.lat),
-          lng: parseFloat(h.lon),
-          title: h.display_name.split(",")[0],
-          subtitle: h.display_name,
-        }));
-      } catch {
-        return [] as PlaceHit[];
-      }
-    })();
-
-    const parcelPromise = looksLikeParcel
+    const parcelPromise = PARCEL_TOKEN.test(q)
       ? (async () => {
           try {
             const ku = selectedParcelRef.current?.ku || "";
@@ -181,9 +145,9 @@ function Portal() {
       : Promise.resolve<ParcelHit[]>([]);
 
     try {
-      const [places, parcels] = await Promise.all([placesPromise, parcelPromise]);
+      const parcels = await parcelPromise;
       if (ctrl.signal.aborted) return;
-      setHits(parcels.length > 0 ? parcels : [...parcels, ...places]);
+      setHits(parcels);
       setShowHits(true);
     } finally {
       if (!ctrl.signal.aborted) setSearching(false);
@@ -203,7 +167,7 @@ function Portal() {
   }, [query, runSearch]);
 
   const pickHit = async (h: Hit) => {
-    setMarker({ lat: h.lat, lng: h.lng, label: h.title, zoom: h.kind === "parcel" ? 18 : 17 });
+    setMarker({ lat: h.lat, lng: h.lng, label: h.title, zoom: 18 });
     setShowHits(false);
     setQuery(h.title);
 
@@ -335,12 +299,16 @@ function Portal() {
   const backToSearch = useCallback(() => {
     setSelectedParcel(null);
     setMultiParcels([]);
+    setMarker(null);
+    setSelectionMode(false);
     mapRef.current?.clearParcel();
   }, []);
 
   const handleAreaSelect = useCallback(async (bbox: { south: number; west: number; north: number; east: number }) => {
+    setMultiParcels([]);
+    setSelectedParcel(null);
+    setMarker(null);
     setMultiLoading(true);
-    setSelectionMode(false);
     try {
       const res = await fetch(
         `/api/public/kataster/parcels-by-bbox?south=${bbox.south}&west=${bbox.west}&north=${bbox.north}&east=${bbox.east}`,
@@ -355,6 +323,27 @@ function Portal() {
       setMultiLoading(false);
     }
   }, []);
+
+  const renderHit = (h: Hit) => (
+    <button
+      key={h.id}
+      onClick={() => pickHit(h)}
+      className="flex w-full items-start gap-2.5 border-b border-border px-3 py-2.5 text-left last:border-b-0 hover:bg-muted"
+    >
+      <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-600" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13px] font-medium text-foreground">
+          {h.title}
+        </div>
+        <div className="truncate text-[11.5px] text-muted-foreground">
+          {h.subtitle}
+        </div>
+      </div>
+      <span className="rounded-sm border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[9.5px] uppercase text-muted-foreground">
+        KN
+      </span>
+    </button>
+  );
 
   if (authLoading) {
     return (
@@ -424,26 +413,9 @@ function Portal() {
                     Žiadne výsledky pre „{query}"
                   </div>
                 ) : (
-                  hits.map((h) => (
-                    <button
-                      key={h.id}
-                      onClick={() => pickHit(h)}
-                      className="flex w-full items-start gap-2.5 border-b border-border px-3 py-2.5 text-left last:border-b-0 hover:bg-muted"
-                    >
-                      <MapPin className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${h.kind === "parcel" ? "text-red-600" : "text-primary"}`} />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-[13px] font-medium text-foreground">
-                          {h.title}
-                        </div>
-                        <div className="truncate text-[11.5px] text-muted-foreground">
-                          {h.subtitle}
-                        </div>
-                      </div>
-                      <span className="rounded-sm border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[9.5px] uppercase text-muted-foreground">
-                        {h.kind === "parcel" ? "KN" : "SK"}
-                      </span>
-                    </button>
-                  ))
+                  <div>
+                    {hits.map((h) => renderHit(h))}
+                  </div>
                 )}
               </div>
             )}
@@ -490,7 +462,7 @@ function Portal() {
               Kliknite na mapu alebo vyhľadajte parcelu v hornom vyhľadávaní.
             </p>
             <p className="mt-4 max-w-[200px] text-[11px] text-muted-foreground">
-              Pre výber viacerých parciel použite tlačidlo <Square className="inline h-3 w-3" /> v pravom paneli a ťahaním myši označte oblasť.
+              Pre výber viacerých parciel použite tlačidlo <Crop className="inline h-3 w-3" /> v pravom paneli a ťahaním myši označte oblasť.
             </p>
           </div>
         )}
@@ -527,7 +499,7 @@ function Portal() {
           title={selectionMode ? "Ukončiť výber" : "Výber viacerých parciel"}
           aria-label="Výber viacerých parciel"
         >
-          <Square className="h-[18px] w-[18px]" />
+          <Crop className="h-[18px] w-[18px]" />
         </button>
         <button
           onClick={() => mapRef.current?.zoomIn()}
@@ -664,7 +636,7 @@ function ParcelDetail({ info, onClear }: { info: ParcelInfo; onClear: () => void
   const kuCodeRaw = useMemo(() => {
     for (const [key, val] of Object.entries(a)) {
       const k = key.toLowerCase();
-      if (/kód katastrálneho|katu|ku_kod|kód k\.ú\./.test(k) && val != null && String(val).trim() !== "") {
+      if (/kód.*katastr|kod.*katastr|katu|ku_kod|kod_ku|k\.ú/i.test(k) && val != null && String(val).trim() !== "") {
         return String(val);
       }
     }
@@ -711,7 +683,7 @@ function ParcelDetail({ info, onClear }: { info: ParcelInfo; onClear: () => void
       if (/obec|municip/.test(k)) { locFields.push({ label: "Obec", val: v, key }); continue; }
       if (/okres/.test(k)) { locFields.push({ label: "Okres", val: v, key }); continue; }
       if (/kraj/.test(k)) { locFields.push({ label: "Kraj", val: v, key }); continue; }
-      if (/kód katastrálneho|katu|ku_kod|kód k\.ú\./.test(k)) { locFields.push({ label: "Kód k.ú.", val: v, key }); continue; }
+      if (/kód.*katastr|kod.*katastr|katu|ku_kod|kod_ku|k\.ú/i.test(k)) { locFields.push({ label: "Kód k.ú.", val: v, key }); continue; }
 
       if (/kód druhu|kod_druhu/.test(k)) { paramFields.push({ label: "Kód druhu", val: v, key }); continue; }
       if (/spôsob vyu|sposob_vyu/.test(k)) { paramFields.push({ label: "Spôsob využitia", val: v, key }); continue; }
@@ -1003,6 +975,7 @@ function MultiOwnerPanel({ parcels, onClear }: { parcels: Record<string, unknown
               </button>
               {expanded === i && (
                 <div className="border-b border-border px-10 pb-2 pt-1 text-[12px] text-muted-foreground">
+                  <div className="py-0.5 font-medium text-foreground">{o.name}</div>
                   {o.address && <div className="py-0.5">{o.address}</div>}
                   {o.share && <div className="py-0.5">Podiel: {o.share}</div>}
                   <div className="mt-1 space-y-0.5">
@@ -1028,7 +1001,7 @@ function extractKuCode(props: Record<string, unknown>): string | null {
   if (direct && String(direct).trim() !== "") return String(direct);
   for (const [key, val] of Object.entries(props)) {
     const k = key.toLowerCase();
-    if (/kód katastrálneho|katu|ku_kod|kód k\.ú\./.test(k) && val != null && String(val).trim() !== "") {
+    if (/kód.*katastr|kod.*katastr|katu|ku_kod|kod_ku|k\.ú/i.test(k) && val != null && String(val).trim() !== "") {
       return String(val);
     }
   }
