@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as PrintRouteImport } from './routes/print'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
@@ -24,6 +25,11 @@ import { Route as ApiPublicKatasterOwnersBatchRouteImport } from './routes/api/p
 import { Route as ApiPublicKatasterLvRouteImport } from './routes/api/public/kataster/lv'
 import { Route as ApiPublicKatasterIdentifyRouteImport } from './routes/api/public/kataster/identify'
 
+const PrintRoute = PrintRouteImport.update({
+  id: '/print',
+  path: '/print',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -101,6 +107,7 @@ const ApiPublicKatasterIdentifyRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/print': typeof PrintRoute
   '/admin/users': typeof AdminUsersRoute
   '/admin/': typeof AdminIndexRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
@@ -117,6 +124,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/print': typeof PrintRoute
   '/admin/users': typeof AdminUsersRoute
   '/admin': typeof AdminIndexRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
@@ -134,6 +142,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/print': typeof PrintRoute
   '/admin/users': typeof AdminUsersRoute
   '/admin/': typeof AdminIndexRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
@@ -152,6 +161,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/print'
     | '/admin/users'
     | '/admin/'
     | '/api/auth/login'
@@ -168,6 +178,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/login'
+    | '/print'
     | '/admin/users'
     | '/admin'
     | '/api/auth/login'
@@ -184,6 +195,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/login'
+    | '/print'
     | '/admin/users'
     | '/admin/'
     | '/api/auth/login'
@@ -201,6 +213,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
+  PrintRoute: typeof PrintRoute
   AdminUsersRoute: typeof AdminUsersRoute
   AdminIndexRoute: typeof AdminIndexRoute
   ApiAuthLoginRoute: typeof ApiAuthLoginRoute
@@ -217,6 +230,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/print': {
+      id: '/print'
+      path: '/print'
+      fullPath: '/print'
+      preLoaderRoute: typeof PrintRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -321,6 +341,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
+  PrintRoute: PrintRoute,
   AdminUsersRoute: AdminUsersRoute,
   AdminIndexRoute: AdminIndexRoute,
   ApiAuthLoginRoute: ApiAuthLoginRoute,

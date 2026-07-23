@@ -18,6 +18,7 @@ import {
   Crop,
   ChevronDown,
   ChevronRight,
+  Printer,
 } from "lucide-react";
 import logo from "@/assets/logo-removebg-preview.png";
 import type { MapMarker, MapViewHandle, ParcelInfo } from "@/components/MapView";
@@ -445,27 +446,92 @@ function Portal() {
 
       {/* Sidebar — pure detail panel */}
       <aside className="absolute left-0 top-14 bottom-0 z-[900] flex w-[340px] flex-col border-r border-border bg-surface">
-        {multiParcels.length > 0 ? (
-          <MultiOwnerPanel parcels={multiParcels} onClear={backToSearch} />
-        ) : selectedParcel ? (
-          <ParcelDetail info={selectedParcel} onClear={backToSearch} />
-        ) : multiLoading ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Vyhľadávam parcely v oblasti…</p>
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {multiParcels.length > 0 ? (
+            <MultiOwnerPanel parcels={multiParcels} onClear={backToSearch} />
+          ) : selectedParcel ? (
+            <ParcelDetail info={selectedParcel} onClear={backToSearch} />
+          ) : multiLoading ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Vyhľadávam parcely v oblasti…</p>
+            </div>
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+              <MapPin className="mb-3 h-8 w-8 text-muted-foreground/20" strokeWidth={1.5} />
+              <p className="text-sm font-medium text-foreground">Vyberte parcelu</p>
+              <p className="mt-1.5 max-w-[200px] text-[12px] leading-relaxed text-muted-foreground">
+                Kliknite na mapu alebo vyhľadajte parcelu v hornom vyhľadávaní.
+              </p>
+              <p className="mt-4 max-w-[200px] text-[11px] text-muted-foreground">
+                Pre výber viacerých parciel použite tlačidlo <Crop className="inline h-3 w-3" /> v pravom paneli a ťahaním myši označte oblasť.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="shrink-0 border-t border-border px-3 py-2">
+          <div className="flex items-center gap-2">
+            {selectedParcel && (
+              <a
+                href={selectedParcel.zbgisUrl}
+                target="_blank"
+                rel="noopener"
+                className="flex h-9 items-center gap-1.5 rounded-md border border-border px-2.5 text-[12px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                ZBGIS
+              </a>
+            )}
+            <button
+              onClick={() => {
+                const p = selectedParcel;
+                const parcels: Array<Record<string, string | null>> = [];
+
+                if (multiParcels.length > 0) {
+                  for (const mp of multiParcels) {
+                    const raw = (mp as Record<string, unknown>);
+                    parcels.push({
+                      parcelNo: String(raw.parcelNo || ""),
+                      ku: String(raw.ku || ""),
+                      kuCode: extractKuCode(raw),
+                      lv: raw.lv != null ? String(raw.lv) : null,
+                      vymera: raw.vymera != null ? String(raw.vymera) : null,
+                      druh: raw.druh != null ? String(raw.druh) : null,
+                    });
+                  }
+                } else if (p) {
+                  const rawA = p.rawAttributes || {};
+                  parcels.push({
+                    parcelNo: p.parcelNo,
+                    ku: p.ku,
+                    kuCode: extractKuCode(rawA),
+                    lv: p.lv,
+                    vymera: p.vymera,
+                    druh: p.druh,
+                  });
+                }
+
+                const printLat = marker ? marker.lat : (p ? p.lat : 48.7);
+                const printLng = marker ? marker.lng : (p ? p.lng : 19.5);
+                const printZoom = marker ? (marker.zoom || 17) : (p ? 17 : 10);
+
+                const qs = new URLSearchParams({
+                  lat: printLat.toFixed(6),
+                  lng: printLng.toFixed(6),
+                  zoom: String(printZoom),
+                  base,
+                  parcels: JSON.stringify(parcels),
+                });
+                window.open(`/print?${qs}`, "_blank");
+              }}
+              className="ml-auto flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+              title="Tlačiť"
+            >
+              <Printer className="h-[18px] w-[18px]" />
+            </button>
           </div>
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
-            <MapPin className="mb-3 h-8 w-8 text-muted-foreground/20" strokeWidth={1.5} />
-            <p className="text-sm font-medium text-foreground">Vyberte parcelu</p>
-            <p className="mt-1.5 max-w-[200px] text-[12px] leading-relaxed text-muted-foreground">
-              Kliknite na mapu alebo vyhľadajte parcelu v hornom vyhľadávaní.
-            </p>
-            <p className="mt-4 max-w-[200px] text-[11px] text-muted-foreground">
-              Pre výber viacerých parciel použite tlačidlo <Crop className="inline h-3 w-3" /> v pravom paneli a ťahaním myši označte oblasť.
-            </p>
-          </div>
-        )}
+        </div>
       </aside>
 
       {/* Map */}
@@ -797,19 +863,6 @@ function ParcelDetail({ info, onClear }: { info: ParcelInfo; onClear: () => void
             {otherFields.map((f) => <Row key={f.key} label={f.label} value={f.val} />)}
           </Section>
         )}
-      </div>
-
-      {/* ZBGIS footer */}
-      <div className="shrink-0 border-t border-border px-4 py-3">
-        <a
-          href={info.zbgisUrl}
-          target="_blank"
-          rel="noopener"
-          className="flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-2.5 text-[13px] font-medium text-primary-foreground hover:opacity-90"
-        >
-          <ExternalLink className="h-4 w-4" />
-          Zobraziť v ZBGIS
-        </a>
       </div>
     </div>
   );
